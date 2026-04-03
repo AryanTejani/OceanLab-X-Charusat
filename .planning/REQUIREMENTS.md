@@ -108,42 +108,42 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | — | Pending |
-| AUTH-02 | — | Pending |
-| AUTH-03 | — | Pending |
-| AUDIO-01 | — | Pending |
-| AUDIO-02 | — | Pending |
-| AUDIO-03 | — | Pending |
-| AUDIO-04 | — | Pending |
-| TRANS-01 | — | Pending |
-| TRANS-02 | — | Pending |
-| TRANS-03 | — | Pending |
-| INSIGHT-01 | — | Pending |
-| INSIGHT-02 | — | Pending |
-| INSIGHT-03 | — | Pending |
-| INSIGHT-04 | — | Pending |
-| INSIGHT-05 | — | Pending |
-| PODCAST-01 | — | Pending |
-| PODCAST-02 | — | Pending |
-| PODCAST-03 | — | Pending |
-| PODCAST-04 | — | Pending |
-| DASH-01 | — | Pending |
-| DASH-02 | — | Pending |
-| DASH-03 | — | Pending |
-| DASH-04 | — | Pending |
-| INFRA-01 | — | Pending |
-| INFRA-02 | — | Pending |
-| INFRA-03 | — | Pending |
-| INFRA-04 | — | Pending |
-| UI-01 | — | Pending |
-| UI-02 | — | Pending |
-| UI-03 | — | Pending |
+| AUTH-01 | Phase 1 | Pending |
+| AUTH-02 | Phase 1 | Pending |
+| AUTH-03 | Phase 1 | Pending |
+| AUDIO-01 | Phase 2 | Pending |
+| AUDIO-02 | Phase 2 | Pending |
+| AUDIO-03 | Phase 2 | Pending |
+| AUDIO-04 | Phase 1 | Pending |
+| TRANS-01 | Phase 2 | Pending |
+| TRANS-02 | Phase 2 | Pending |
+| TRANS-03 | Phase 2 | Pending |
+| INSIGHT-01 | Phase 2 | Pending |
+| INSIGHT-02 | Phase 2 | Pending |
+| INSIGHT-03 | Phase 2 | Pending |
+| INSIGHT-04 | Phase 2 | Pending |
+| INSIGHT-05 | Phase 2 | Pending |
+| PODCAST-01 | Phase 3 | Pending |
+| PODCAST-02 | Phase 3 | Pending |
+| PODCAST-03 | Phase 3 | Pending |
+| PODCAST-04 | Phase 3 | Pending |
+| DASH-01 | Phase 3 | Pending |
+| DASH-02 | Phase 3 | Pending |
+| DASH-03 | Phase 3 | Pending |
+| DASH-04 | Phase 3 | Pending |
+| INFRA-01 | Phase 1 | Pending |
+| INFRA-02 | Phase 1 | Pending |
+| INFRA-03 | Phase 1 | Pending |
+| INFRA-04 | Phase 1 | Pending |
+| UI-01 | Phase 3 | Pending |
+| UI-02 | Phase 3 | Pending |
+| UI-03 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 30 total
-- Mapped to phases: 0
-- Unmapped: 30
+- Mapped to phases: 30
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-03*
-*Last updated: 2026-04-03 after initial definition*
+*Last updated: 2026-04-03 after roadmap creation — all 30 requirements mapped*

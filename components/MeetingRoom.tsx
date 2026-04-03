@@ -7,10 +7,12 @@ import {
   CallingState,
   PaginatedGridLayout,
   SpeakerLayout,
+  useCall,
   useCallStateHooks,
 } from '@stream-io/video-react-sdk';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Users, LayoutList, FileText } from 'lucide-react';
+import localTranscriptStorageClient from '@/lib/localTranscriptStorageClient';
 
 import {
   DropdownMenu,
@@ -30,13 +32,50 @@ const MeetingRoom = () => {
   const searchParams = useSearchParams();
   const isPersonalRoom = !!searchParams.get('personal');
   const router = useRouter();
+  const call = useCall();
   const [layout, setLayout] = useState<CallLayoutType>('speaker-left');
   const [showParticipants, setShowParticipants] = useState(false);
   const [showTranscription, setShowTranscription] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { useCallCallingState } = useCallStateHooks();
 
-  // for more detail about types of CallingState see: https://getstream.io/video/docs/react/ui-cookbook/ringing-call/#incoming-call-panel
   const callingState = useCallCallingState();
+
+  const handleLeave = async () => {
+    const transcriptText = localTranscriptStorageClient.getTranscriptText?.();
+    const callId = call?.id;
+
+    if (!transcriptText || !callId) {
+      router.push('/');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const res = await fetch('/api/meetings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meetingId: callId,
+          transcriptText,
+          title:
+            call?.state?.custom?.description ||
+            `Meeting ${new Date().toLocaleDateString()}`,
+          participants:
+            call?.state?.members?.map((m) => m.user?.name || m.user_id) || [],
+        }),
+      });
+      if (res.ok) {
+        router.push(`/meeting-insights/${callId}`);
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to save meeting transcript:', err);
+    } finally {
+      setIsSaving(false);
+    }
+    router.push('/');
+  };
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
@@ -53,6 +92,14 @@ const MeetingRoom = () => {
 
   return (
     <section className="relative h-screen w-full overflow-hidden pt-4 text-white">
+      {isSaving && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-dark-1/90 gap-3">
+          <div className="size-10 rounded-full border-4 border-blue-1 border-t-transparent animate-spin" />
+          <p className="text-white text-lg font-medium">
+            Saving meeting insights...
+          </p>
+        </div>
+      )}
       <div className="relative flex size-full items-center justify-center">
         <div className=" flex size-full max-w-[1000px] items-center">
           <CallLayout />
@@ -67,7 +114,7 @@ const MeetingRoom = () => {
       </div>
       {/* video layout and call controls */}
       <div className="fixed bottom-0 flex w-full items-center justify-center gap-5">
-        <CallControls onLeave={() => router.push(`/`)} />
+        <CallControls onLeave={handleLeave} />
 
         <DropdownMenu>
           <div className="flex items-center">
@@ -105,9 +152,9 @@ const MeetingRoom = () => {
       </div>
 
       {/* Transcription Panel */}
-      <TranscriptionPanel 
-        isOpen={showTranscription} 
-        onToggle={() => setShowTranscription(!showTranscription)} 
+      <TranscriptionPanel
+        isOpen={showTranscription}
+        onToggle={() => setShowTranscription(!showTranscription)}
       />
     </section>
   );

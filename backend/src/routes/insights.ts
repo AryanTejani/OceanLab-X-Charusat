@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth, getAuth } from '@clerk/express';
 import { getDb } from '../lib/db';
 import { Meeting } from '../entities/Meeting';
+import { Transcript } from '../entities/Transcript';
 import { getGroqClient } from '../lib/groq';
 
 const router = Router();
@@ -30,6 +31,7 @@ Rules:
 - Keep the summary professional and concise
 - For timeline entries, use relative markers like "Opening", "Mid-meeting", "Closing" if no timestamps exist
 - Identify 3-7 key topics discussed
+- Where a speaker name is available (e.g. "Nishant: ..."), use it when referencing who said what
 
 Transcript:
 `;
@@ -45,27 +47,45 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     meetingId = req.body.meetingId;
-    if (!meetingId) {
-      return res.status(400).json({ error: 'meetingId is required' });
-    }
+    if (!meetingId) return res.status(400).json({ error: 'meetingId is required' });
 
     const ds = await getDb();
-    const repo = ds.getRepository(Meeting);
+    const meetingRepo = ds.getRepository(Meeting);
+    const transcriptRepo = ds.getRepository(Transcript);
 
-    const meeting = await repo.findOneBy({ meetingId, userId });
-    if (!meeting) {
-      return res.status(404).json({ error: 'Meeting not found' });
+    const meeting = await meetingRepo.findOneBy({ meetingId, userId });
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+    // ── Read transcript from DB (individual utterances, ordered by start time) ──
+    const utterances = await transcriptRepo.find({
+      where: { meetingId },
+      order: { start: 'ASC' },
+    });
+
+    // Build formatted transcript string from individual utterances
+    // Prefer speakerName; fall back to speakerLabel; then 'Speaker'
+    let transcriptText = '';
+    if (utterances.length > 0) {
+      transcriptText = utterances
+        .map((u) => {
+          const name = u.speakerName || (u.speakerLabel ? `Speaker ${u.speakerLabel}` : 'Speaker');
+          return `${name}: ${u.text}`;
+        })
+        .join('\n');
+    } else if (meeting.transcriptText && meeting.transcriptText.trim().length > 0) {
+      // Fallback: use stored transcriptText if no utterances in DB yet
+      transcriptText = meeting.transcriptText;
     }
 
-    if (!meeting.transcriptText || meeting.transcriptText.trim().length === 0) {
+    if (!transcriptText.trim()) {
       return res.status(400).json({ error: 'No transcript available for this meeting' });
     }
 
     const maxChars = 100000;
     const transcript =
-      meeting.transcriptText.length > maxChars
-        ? meeting.transcriptText.substring(0, maxChars) + '\n\n[Transcript truncated]'
-        : meeting.transcriptText;
+      transcriptText.length > maxChars
+        ? transcriptText.substring(0, maxChars) + '\n\n[Transcript truncated]'
+        : transcriptText;
 
     const groq = getGroqClient();
     const completion = await groq.chat.completions.create({
@@ -85,14 +105,16 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     } catch (parseError) {
       console.error('Failed to parse Groq response:', parseError);
       if (meetingId && userId) {
-        await repo.update({ meetingId, userId }, { status: 'failed' });
+        await meetingRepo.update({ meetingId, userId }, { status: 'failed' });
       }
       return res.status(500).json({ error: 'Failed to parse AI response' });
     }
 
-    await repo.update(
+    // Store the denormalised transcript text on Meeting for display in UI
+    await meetingRepo.update(
       { meetingId, userId },
       {
+        transcriptText: transcript,
         summary: insights.summary || '',
         actionItems: (insights.actionItems || []).map((item: { text: string; assignee?: string }) => ({
           text: item.text,

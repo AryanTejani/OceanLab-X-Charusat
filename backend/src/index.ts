@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-// @clerk/express needs CLERK_PUBLISHABLE_KEY (without NEXT_PUBLIC_ prefix)
 if (!process.env.CLERK_PUBLISHABLE_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
   process.env.CLERK_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 }
@@ -14,8 +13,8 @@ import { Server as SocketIOServer } from 'socket.io';
 import { clerkMiddleware } from '@clerk/express';
 import { getDb } from './lib/db';
 import AssemblyAIWebSocketService from './lib/assemblyai-ws';
+import { Transcript } from './entities/Transcript';
 
-// Routes
 import meetingsRouter from './routes/meetings';
 import insightsRouter from './routes/insights';
 import podcastRouter from './routes/podcast';
@@ -33,7 +32,6 @@ app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(clerkMiddleware());
 
-// API routes
 app.use('/api/meetings', meetingsRouter);
 app.use('/api/insights', insightsRouter);
 app.use('/api/podcast', podcastRouter);
@@ -42,12 +40,12 @@ app.use('/api/meeting-qa', meetingQaRouter);
 app.use('/api', tokensRouter);
 app.use('/api/health', healthRouter);
 
-// ─── Socket.IO — Single-source AssemblyAI transcription per meeting room ──────
+// ─── Socket.IO ────────────────────────────────────────────────────────────────
 const io = new SocketIOServer(server, {
   cors: { origin: FRONTEND_URL, methods: ['GET', 'POST'] },
 });
 
-// Per-room state: one AssemblyAI connection per meeting, host-controlled
+// ── Per-room transcription state ──────────────────────────────────────────────
 interface SpeakerIdentity {
   id: string;
   name: string;
@@ -63,29 +61,95 @@ interface RoomTranscriptionState {
     readyState?: number;
   } | null;
   state: 'active' | 'paused' | 'stopped';
-  // Map from AssemblyAI speaker label ("A","B"...) to participant identity — locked once set
   speakerMapping: Record<string, SpeakerIdentity>;
 }
 
 const roomStates = new Map<string, RoomTranscriptionState>();
 
-function getRoomState(meetingId: string): RoomTranscriptionState | undefined {
-  return roomStates.get(meetingId);
+// ── Per-room transcript buffer — flush to DB every 5 turns or 30 seconds ─────
+interface PendingTranscript {
+  meetingId: string;
+  text: string;
+  speakerLabel: string | null;
+  speakerName: string | null;
+  speakerId: string | null;
+  start: number;
+  end: number;
+  confidence: number;
+  timestamp: Date;
 }
 
-function closeRoomConnection(room: RoomTranscriptionState) {
-  if (room.connection) {
-    try {
-      room.connection.closeConnection ? room.connection.closeConnection() : room.connection.close();
-    } catch (_) {}
-    room.connection = null;
+const roomBuffers = new Map<string, PendingTranscript[]>();
+const roomFlushTimers = new Map<string, ReturnType<typeof setInterval>>();
+const FLUSH_BATCH_SIZE = 5;
+const FLUSH_INTERVAL_MS = 30_000;
+
+async function flushBuffer(meetingId: string) {
+  const buffer = roomBuffers.get(meetingId);
+  if (!buffer || buffer.length === 0) return;
+
+  // Swap buffer immediately to avoid double-flush race
+  roomBuffers.set(meetingId, []);
+
+  // Re-resolve speaker names at flush time — mappings may have arrived after push
+  const speakerMapping = roomStates.get(meetingId)?.speakerMapping || {};
+  const rows = buffer.map((b) => ({
+    meetingId: b.meetingId,
+    text: b.text,
+    speakerLabel: b.speakerLabel,
+    speakerName: b.speakerName ?? (b.speakerLabel ? (speakerMapping[b.speakerLabel]?.name || null) : null),
+    speakerId: b.speakerId ?? (b.speakerLabel ? (speakerMapping[b.speakerLabel]?.id || null) : null),
+    start: b.start,
+    end: b.end,
+    confidence: b.confidence,
+    timestamp: b.timestamp,
+  }));
+
+  try {
+    const ds = await getDb();
+    await ds.getRepository(Transcript).insert(rows);
+    console.log(
+      `💾 Flushed ${rows.length} transcript(s) for room ${meetingId}:\n` +
+      rows.map((r) => `   [${r.speakerName || r.speakerLabel || 'Unknown'}] ${r.text}`).join('\n')
+    );
+  } catch (err) {
+    console.error(`❌ Failed to flush transcripts for ${meetingId}:`, err);
+    // Restore failed entries back to buffer so they're not lost
+    const current = roomBuffers.get(meetingId) || [];
+    roomBuffers.set(meetingId, [...buffer, ...current]);
   }
 }
 
-async function openAssemblyAIConnection(
-  meetingId: string,
-  room: RoomTranscriptionState
-) {
+function startFlushTimer(meetingId: string) {
+  stopFlushTimer(meetingId);
+  const timer = setInterval(() => flushBuffer(meetingId), FLUSH_INTERVAL_MS);
+  roomFlushTimers.set(meetingId, timer);
+}
+
+function stopFlushTimer(meetingId: string) {
+  const existing = roomFlushTimers.get(meetingId);
+  if (existing) { clearInterval(existing); roomFlushTimers.delete(meetingId); }
+}
+
+function pushToBuffer(entry: PendingTranscript) {
+  const buf = roomBuffers.get(entry.meetingId) || [];
+  buf.push(entry);
+  roomBuffers.set(entry.meetingId, buf);
+  if (buf.length >= FLUSH_BATCH_SIZE) {
+    flushBuffer(entry.meetingId);
+  }
+}
+
+// ── Room helpers ──────────────────────────────────────────────────────────────
+function closeRoomConnection(room: RoomTranscriptionState) {
+  if (!room.connection) return;
+  try {
+    room.connection.closeConnection ? room.connection.closeConnection() : room.connection.close();
+  } catch (_) {}
+  room.connection = null;
+}
+
+async function openAssemblyAIConnection(meetingId: string, room: RoomTranscriptionState) {
   const assemblyai = AssemblyAIWebSocketService.getInstance();
   const connection = await assemblyai.createLiveTranscription(
     { sample_rate: 16000 },
@@ -95,7 +159,10 @@ async function openAssemblyAIConnection(
 
       const speakerLabel = result.speakerLabel || null;
       const speakerName = speakerLabel ? (room.speakerMapping[speakerLabel]?.name || null) : null;
+      const speakerId = speakerLabel ? (room.speakerMapping[speakerLabel]?.id || null) : null;
+      const timestamp = new Date();
 
+      // Broadcast to all clients in the room
       io.to(meetingId).emit('transcript', {
         meetingId,
         text,
@@ -106,14 +173,31 @@ async function openAssemblyAIConnection(
         end: result.end,
         isFinal: result.isFinal,
         turnOrder: result.turnOrder ?? null,
-        timestamp: new Date(),
+        timestamp,
       });
+
+      // Buffer final turns for DB persistence
+      if (result.isFinal) {
+        pushToBuffer({
+          meetingId,
+          text,
+          speakerLabel,
+          speakerName,
+          speakerId,
+          start: result.start ?? 0,
+          end: result.end ?? 0,
+          confidence: result.confidence ?? 0,
+          timestamp,
+        });
+      }
     },
     (error: Error) => {
       console.error(`❌ AssemblyAI error for room ${meetingId}:`, error);
       room.connection = null;
       room.state = 'paused';
-      io.to(meetingId).emit('transcription-error', { error: error.message || String(error) });
+      // Flush what we have before pausing
+      flushBuffer(meetingId);
+      io.to(meetingId).emit('transcription-error', { error: error.message });
       io.to(meetingId).emit('transcription-state', { state: 'paused', timestamp: new Date() });
     }
   );
@@ -126,10 +210,10 @@ async function openAssemblyAIConnection(
   return connection;
 }
 
+// ── Socket.IO events ──────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   console.log(`🔌 Client connected: ${socket.id}`);
 
-  // Join a meeting room (all participants call this)
   socket.on('join-meeting', (meetingId: string) => {
     if (typeof meetingId === 'string' && meetingId.trim()) {
       socket.join(meetingId);
@@ -137,14 +221,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  // HOST ONLY: Start transcription for the room
+  // HOST ONLY: Start transcription
   socket.on('start-transcription', async ({ meetingId, userId, userName }: { meetingId: string; userId: string; userName: string }) => {
-    if (!meetingId) {
-      socket.emit('transcription-error', { error: 'Missing meetingId' });
-      return;
-    }
+    if (!meetingId) { socket.emit('transcription-error', { error: 'Missing meetingId' }); return; }
 
-    // Enforce single active connection per room
     const existing = roomStates.get(meetingId);
     if (existing && existing.state === 'active') {
       socket.emit('transcription-error', { error: 'Transcription already active for this room' });
@@ -153,7 +233,6 @@ io.on('connection', (socket) => {
 
     socket.join(meetingId);
 
-    // Create or reset room state — host is whoever starts
     const room: RoomTranscriptionState = existing || {
       hostSocketId: socket.id,
       connection: null,
@@ -164,88 +243,86 @@ io.on('connection', (socket) => {
     room.state = 'active';
     roomStates.set(meetingId, room);
 
+    // Init buffer for this room
+    if (!roomBuffers.has(meetingId)) roomBuffers.set(meetingId, []);
+    startFlushTimer(meetingId);
+
     try {
       const connection = await openAssemblyAIConnection(meetingId, room);
       room.connection = connection;
-
       socket.emit('transcription-started');
       io.to(meetingId).emit('transcription-state', { state: 'active', timestamp: new Date() });
-      console.log(`🎤 AssemblyAI started for room ${meetingId} by host ${socket.id}`);
+      console.log(`🎤 AssemblyAI started for room ${meetingId}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error('Failed to start transcription:', err);
       room.state = 'stopped';
+      stopFlushTimer(meetingId);
       socket.emit('transcription-error', { error: message });
     }
   });
 
-  // HOST ONLY: Audio chunks from host browser → forward to AssemblyAI
+  // HOST ONLY: Audio stream → AssemblyAI
   socket.on('audio-chunk', (data: { meetingId?: string; audioChunk?: string }) => {
-    const base64 = data?.audioChunk;
-    const meetingId = data?.meetingId;
-    if (!base64 || !meetingId) return;
-
+    const { audioChunk, meetingId } = data;
+    if (!audioChunk || !meetingId) return;
     const room = roomStates.get(meetingId);
-    if (!room || room.hostSocketId !== socket.id) return; // only host sends audio
-    if (!room.connection || room.state !== 'active') return;
-    if (room.connection.readyState !== 1) return;
-
+    if (!room || room.hostSocketId !== socket.id || room.state !== 'active') return;
+    if (!room.connection || room.connection.readyState !== 1) return;
     try {
-      const buf = Buffer.from(base64, 'base64');
-      room.connection.sendAudio(buf);
+      room.connection.sendAudio(Buffer.from(audioChunk, 'base64'));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('❌ Error sending audio:', message);
       room.connection = null;
       room.state = 'paused';
+      flushBuffer(meetingId);
       socket.emit('transcription-error', { error: 'Connection closed unexpectedly' });
       io.to(meetingId).emit('transcription-state', { state: 'paused', timestamp: new Date() });
     }
   });
 
-  // HOST ONLY: Pause transcription (closes AssemblyAI WS to save tokens)
+  // HOST ONLY: Pause — closes AssemblyAI WS (stops billing)
   socket.on('pause-transcription', ({ meetingId }: { meetingId: string }) => {
     const room = roomStates.get(meetingId);
     if (!room || room.hostSocketId !== socket.id) return;
-
     closeRoomConnection(room);
     room.state = 'paused';
-
+    stopFlushTimer(meetingId);
+    flushBuffer(meetingId); // flush remaining before pausing
     const timestamp = new Date();
     socket.emit('transcription-paused');
     io.to(meetingId).emit('transcription-state', { state: 'paused', timestamp });
     console.log(`⏸ Transcription paused for room ${meetingId}`);
   });
 
-  // HOST ONLY: Resume transcription (opens a new AssemblyAI WS)
+  // HOST ONLY: Resume — opens new AssemblyAI WS
   socket.on('resume-transcription', async ({ meetingId, userId, userName }: { meetingId: string; userId: string; userName: string }) => {
     const room = roomStates.get(meetingId);
-    if (!room || room.hostSocketId !== socket.id) return;
-    if (room.state === 'active') return; // already active
-
+    if (!room || room.hostSocketId !== socket.id || room.state === 'active') return;
+    startFlushTimer(meetingId);
     try {
       const connection = await openAssemblyAIConnection(meetingId, room);
       room.connection = connection;
       room.state = 'active';
-
       const timestamp = new Date();
       socket.emit('transcription-resumed');
       io.to(meetingId).emit('transcription-state', { state: 'active', timestamp });
       console.log(`▶ Transcription resumed for room ${meetingId}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error('Failed to resume transcription:', err);
       socket.emit('transcription-error', { error: message });
     }
   });
 
-  // HOST ONLY: Stop transcription entirely
+  // HOST ONLY: Stop
   socket.on('stop-transcription', ({ meetingId }: { meetingId?: string } = {}) => {
     if (meetingId) {
       const room = roomStates.get(meetingId);
       if (room && room.hostSocketId === socket.id) {
         closeRoomConnection(room);
         room.state = 'stopped';
+        stopFlushTimer(meetingId);
+        flushBuffer(meetingId); // flush all remaining
         io.to(meetingId).emit('transcription-state', { state: 'stopped', timestamp: new Date() });
         roomStates.delete(meetingId);
       }
@@ -254,43 +331,82 @@ io.on('connection', (socket) => {
     console.log(`🛑 Transcription stopped by ${socket.id}`);
   });
 
-  // HOST ONLY: Resolve actual speaker name for a specific turn by its start timestamp
-  // Used when AssemblyAI returns UNKNOWN or when we want to confirm the speaker
-  socket.on('resolve-turn-speaker', ({ meetingId, turnStart, speakerId, speakerName }: { meetingId: string; turnStart: number; speakerId: string; speakerName: string }) => {
+  // HOST ONLY: Resolve speaker name for a specific turn (matched by start timestamp)
+  socket.on('resolve-turn-speaker', async ({ meetingId, turnStart, speakerId, speakerName }: {
+    meetingId: string; turnStart: number; speakerId: string; speakerName: string;
+  }) => {
     const room = roomStates.get(meetingId);
     if (!room || room.hostSocketId !== socket.id) return;
+
+    console.log(`🏷️ Resolving turn start=${turnStart} → "${speakerName}"`);
+
+    // Broadcast to all clients for UI update
     io.to(meetingId).emit('speaker-for-turn', { turnStart, speakerId, speakerName });
+
+    // Update in-memory buffer first (turn may not be flushed to DB yet)
+    const buf = roomBuffers.get(meetingId);
+    if (buf) {
+      buf.forEach((entry) => {
+        if (entry.start === turnStart) {
+          entry.speakerName = speakerName;
+          entry.speakerId = speakerId;
+        }
+      });
+    }
+
+    // Update DB row — works if already flushed; no-op if not yet (buffer handles it)
+    try {
+      const ds = await getDb();
+      const result = await ds.getRepository(Transcript).update(
+        { meetingId, start: turnStart },
+        { speakerName, speakerId }
+      );
+      if (result.affected && result.affected > 0) {
+        console.log(`✅ DB updated: "${speakerName}" for turn start=${turnStart}`);
+      }
+    } catch (err) {
+      console.error('❌ Failed to update speaker name in DB:', err);
+    }
   });
 
-  // HOST ONLY: Lock speaker label → participant identity mapping
-  // Once a label (e.g. "A") is mapped, it is never overwritten
+  // HOST ONLY: Lock label → name mapping (for future turns in same session)
   socket.on('update-speaker-mapping', ({ meetingId, mapping }: { meetingId: string; mapping: Record<string, SpeakerIdentity> }) => {
     const room = roomStates.get(meetingId);
     if (!room || room.hostSocketId !== socket.id) return;
-
     let updated = false;
     Object.entries(mapping).forEach(([label, identity]) => {
       if (!room.speakerMapping[label]) {
         room.speakerMapping[label] = identity;
         updated = true;
-        console.log(`🏷️ Speaker ${label} → "${identity.name}" locked for room ${meetingId}`);
+        console.log(`🔒 Locked Speaker ${label} → "${identity.name}" for room ${meetingId}`);
+
+        // Retroactively update any buffered entries with this label that have no name yet
+        const buf = roomBuffers.get(meetingId);
+        if (buf) {
+          buf.forEach((entry) => {
+            if (entry.speakerLabel === label && !entry.speakerName) {
+              entry.speakerName = identity.name;
+              entry.speakerId = identity.id;
+            }
+          });
+        }
       }
     });
-
     if (updated) {
       io.to(meetingId).emit('speaker-mapping-update', { mapping: room.speakerMapping });
     }
   });
 
-  // Cleanup when a socket disconnects
+  // Cleanup on disconnect
   socket.on('disconnect', () => {
-    // If a host disconnects, pause transcription for their room
     roomStates.forEach((room, meetingId) => {
       if (room.hostSocketId === socket.id) {
         closeRoomConnection(room);
         room.state = 'paused';
+        stopFlushTimer(meetingId);
+        flushBuffer(meetingId);
         io.to(meetingId).emit('transcription-state', { state: 'paused', timestamp: new Date() });
-        console.log(`⚠️ Host disconnected — transcription paused for room ${meetingId}`);
+        console.log(`⚠️ Host disconnected — transcripts flushed, transcription paused for room ${meetingId}`);
       }
     });
     console.log(`Client disconnected: ${socket.id}`);

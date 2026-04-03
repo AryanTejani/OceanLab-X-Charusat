@@ -13,7 +13,6 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { Users, LayoutList, FileText } from 'lucide-react';
-import localTranscriptStorageClient from '@/lib/localTranscriptStorageClient';
 import { apiFetch } from '@/lib/api';
 
 import {
@@ -42,7 +41,11 @@ const MeetingRoom = () => {
   const [isSaving, setIsSaving] = useState(false);
   const { useCallCallingState, useLocalParticipant } = useCallStateHooks();
   const localParticipant = useLocalParticipant();
-  const isHost = !!(localParticipant && call?.state?.createdBy && localParticipant.userId === call.state.createdBy.id);
+  const isHost = !!(
+    localParticipant &&
+    call?.state?.createdBy &&
+    localParticipant.userId === call.state.createdBy.id
+  );
 
   const callingState = useCallCallingState();
 
@@ -51,14 +54,14 @@ const MeetingRoom = () => {
     if (!callId) return;
 
     setIsSaving(true);
-    const transcriptText = localTranscriptStorageClient.getTranscriptText?.() || '';
     const token = await getToken();
     try {
+      // transcriptText is no longer sent — individual utterances are already in DB
+      // (saved in real-time by the backend as the meeting progressed)
       const res = await apiFetch('/api/meetings/save', token, {
         method: 'POST',
         body: JSON.stringify({
           meetingId: callId,
-          transcriptText,
           title:
             call?.state?.custom?.description ||
             `Meeting ${new Date().toLocaleDateString()}`,

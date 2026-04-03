@@ -18,9 +18,15 @@ interface TranscriptionPanelProps {
   meetingId: string;
 }
 
-const formatTime = (timestamp: Date) => new Date(timestamp).toLocaleTimeString();
+const formatTime = (timestamp: Date) =>
+  new Date(timestamp).toLocaleTimeString();
 
-const TranscriptionPanel = ({ isOpen, onToggle, isHost, meetingId }: TranscriptionPanelProps) => {
+const TranscriptionPanel = ({
+  isOpen,
+  onToggle,
+  isHost,
+  meetingId,
+}: TranscriptionPanelProps) => {
   const receiver = useTranscriptionReceiver(meetingId);
   const host = useHostTranscription(meetingId);
 
@@ -60,7 +66,10 @@ const TranscriptionPanel = ({ isOpen, onToggle, isHost, meetingId }: Transcripti
             </span>
           )}
         </div>
-        <button onClick={onToggle} className="text-gray-400 hover:text-white transition-colors">
+        <button
+          onClick={onToggle}
+          className="text-gray-400 hover:text-white transition-colors"
+        >
           ×
         </button>
       </div>
@@ -131,11 +140,13 @@ const TranscriptionPanel = ({ isOpen, onToggle, isHost, meetingId }: Transcripti
       )}
 
       {/* Status hint for non-host participants */}
-      {!isHost && transcriptionState.state === 'stopped' && receiver.items.length === 0 && (
-        <div className="px-3 py-2 text-gray-400 text-xs border-b border-dark-2 flex-shrink-0">
-          Waiting for host to start transcription...
-        </div>
-      )}
+      {!isHost &&
+        transcriptionState.state === 'stopped' &&
+        receiver.items.length === 0 && (
+          <div className="px-3 py-2 text-gray-400 text-xs border-b border-dark-2 flex-shrink-0">
+            Waiting for host to start transcription...
+          </div>
+        )}
 
       {/* Transcript list */}
       <div
@@ -145,20 +156,31 @@ const TranscriptionPanel = ({ isOpen, onToggle, isHost, meetingId }: Transcripti
       >
         {receiver.items.length === 0 ? (
           <p className="text-gray-400 text-center text-sm py-8">
-            {isHost ? 'Click Start to begin transcription.' : 'No transcripts yet.'}
+            {isHost
+              ? 'Click Start to begin transcription.'
+              : 'No transcripts yet.'}
           </p>
         ) : (
           receiver.items.map((item, idx) => {
             if (isSeparator(item)) {
               const sep = item as TranscriptSeparator;
               return (
-                <div key={`sep-${idx}`} className="flex items-center gap-2 py-1">
+                <div
+                  key={`sep-${idx}`}
+                  className="flex items-center gap-2 py-1"
+                >
                   <div className="flex-1 h-px bg-dark-3" />
                   <span className="text-xs text-gray-500 whitespace-nowrap flex items-center gap-1">
                     {sep.type === 'paused' ? (
-                      <><Pause size={10} className="text-yellow-500" /> Paused {formatTime(sep.timestamp)}</>
+                      <>
+                        <Pause size={10} className="text-yellow-500" /> Paused{' '}
+                        {formatTime(sep.timestamp)}
+                      </>
                     ) : (
-                      <><Play size={10} className="text-green-500" /> Resumed {formatTime(sep.timestamp)}</>
+                      <>
+                        <Play size={10} className="text-green-500" /> Resumed{' '}
+                        {formatTime(sep.timestamp)}
+                      </>
                     )}
                   </span>
                   <div className="flex-1 h-px bg-dark-3" />
@@ -176,11 +198,19 @@ const TranscriptionPanel = ({ isOpen, onToggle, isHost, meetingId }: Transcripti
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-blue-400 font-medium text-xs">
-                    {entry.isFinal ? displayName : (entry.speakerLabel ? `Speaker ${entry.speakerLabel}` : '...')}
+                    {entry.isFinal
+                      ? displayName
+                      : entry.speakerLabel
+                        ? `Speaker ${entry.speakerLabel}`
+                        : '...'}
                   </span>
-                  <span className="text-gray-500 text-xs">{formatTime(entry.timestamp)}</span>
+                  <span className="text-gray-500 text-xs">
+                    {formatTime(entry.timestamp)}
+                  </span>
                 </div>
-                <p className={`text-sm leading-relaxed ${entry.isFinal ? 'text-white' : 'text-gray-400 italic'}`}>
+                <p
+                  className={`text-sm leading-relaxed ${entry.isFinal ? 'text-white' : 'text-gray-400 italic'}`}
+                >
                   {entry.text}
                   {!entry.isFinal && <span className="animate-pulse">...</span>}
                 </p>

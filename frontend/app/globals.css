@@ -90,6 +90,24 @@
   color: white;
 }
 
+/* Fix: link/anchor buttons turn black on hover over dark background */
+.cl-footerActionLink,
+.cl-formResendCodeLink,
+.cl-identityPreviewEditButton,
+.cl-navbarButton {
+  color: #a8c4f0 !important;
+  background-color: transparent !important;
+}
+
+.cl-footerActionLink:hover,
+.cl-formResendCodeLink:hover,
+.cl-identityPreviewEditButton:hover,
+.cl-navbarButton:hover {
+  color: #ffffff !important;
+  background-color: transparent !important;
+  text-decoration: underline;
+}
+
 /* =============================== */
 
 @layer utilities {

@@ -40,7 +40,9 @@ const MeetingRoom = () => {
   const [showParticipants, setShowParticipants] = useState(false);
   const [showTranscription, setShowTranscription] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const { useCallCallingState } = useCallStateHooks();
+  const { useCallCallingState, useLocalParticipant } = useCallStateHooks();
+  const localParticipant = useLocalParticipant();
+  const isHost = !!(localParticipant && call?.state?.createdBy && localParticipant.userId === call.state.createdBy.id);
 
   const callingState = useCallCallingState();
 
@@ -81,17 +83,6 @@ const MeetingRoom = () => {
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
-  const CallLayout = () => {
-    switch (layout) {
-      case 'grid':
-        return <PaginatedGridLayout />;
-      case 'speaker-right':
-        return <SpeakerLayout participantsBarPosition="left" />;
-      default:
-        return <SpeakerLayout participantsBarPosition="right" />;
-    }
-  };
-
   return (
     <section className="relative h-screen w-full overflow-hidden pt-4 text-white">
       {isSaving && (
@@ -104,7 +95,13 @@ const MeetingRoom = () => {
       )}
       <div className="relative flex size-full items-center justify-center">
         <div className=" flex size-full max-w-[1000px] items-center">
-          <CallLayout />
+          {layout === 'grid' ? (
+            <PaginatedGridLayout />
+          ) : layout === 'speaker-right' ? (
+            <SpeakerLayout participantsBarPosition="left" />
+          ) : (
+            <SpeakerLayout participantsBarPosition="right" />
+          )}
         </div>
         <div
           className={cn('h-[calc(100vh-86px)] hidden ml-2', {
@@ -157,6 +154,8 @@ const MeetingRoom = () => {
       <TranscriptionPanel
         isOpen={showTranscription}
         onToggle={() => setShowTranscription(!showTranscription)}
+        isHost={isHost}
+        meetingId={call?.id || ''}
       />
     </section>
   );

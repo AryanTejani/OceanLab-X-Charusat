@@ -17,7 +17,6 @@ import AssemblyAIWebSocketService from './lib/assemblyai-ws';
 
 // Routes
 import meetingsRouter from './routes/meetings';
-// transcripts route removed — transcripts accumulate client-side, bulk-saved via /api/meetings/save
 import insightsRouter from './routes/insights';
 import podcastRouter from './routes/podcast';
 import uploadRouter from './routes/upload';
@@ -36,7 +35,6 @@ app.use(clerkMiddleware());
 
 // API routes
 app.use('/api/meetings', meetingsRouter);
-// /api/transcripts removed — transcripts accumulate client-side
 app.use('/api/insights', insightsRouter);
 app.use('/api/podcast', podcastRouter);
 app.use('/api/upload', uploadRouter);
@@ -44,58 +42,94 @@ app.use('/api/meeting-qa', meetingQaRouter);
 app.use('/api', tokensRouter);
 app.use('/api/health', healthRouter);
 
-// ─── Socket.IO — AssemblyAI real-time transcription ───────────────────────────
+// ─── Socket.IO — Single-source AssemblyAI transcription per meeting room ──────
 const io = new SocketIOServer(server, {
   cors: { origin: FRONTEND_URL, methods: ['GET', 'POST'] },
 });
 
-// Typed socket state — replaces (socket as any) casts
-interface SocketState {
-  connection: { ws?: { readyState: number }; _socket?: { readyState: number }; sendAudio: (buf: Buffer) => void; closeConnection?: () => void; close: () => void; on: (event: string, cb: () => void) => void; readyState?: number } | null;
-  ready: boolean;
-  keepAliveInterval: ReturnType<typeof setInterval> | null;
-}
-const socketStates = new Map<string, SocketState>();
-
-function getState(socketId: string): SocketState {
-  let state = socketStates.get(socketId);
-  if (!state) {
-    state = { connection: null, ready: false, keepAliveInterval: null };
-    socketStates.set(socketId, state);
-  }
-  return state;
+// Per-room state: one AssemblyAI connection per meeting, host-controlled
+interface SpeakerIdentity {
+  id: string;
+  name: string;
 }
 
-function cleanupState(socketId: string) {
-  const state = socketStates.get(socketId);
-  if (!state) return;
-  if (state.connection) {
+interface RoomTranscriptionState {
+  hostSocketId: string;
+  connection: {
+    sendAudio: (buf: Buffer) => void;
+    closeConnection?: () => void;
+    close: () => void;
+    on: (event: string, cb: () => void) => void;
+    readyState?: number;
+  } | null;
+  state: 'active' | 'paused' | 'stopped';
+  // Map from AssemblyAI speaker label ("A","B"...) to participant identity — locked once set
+  speakerMapping: Record<string, SpeakerIdentity>;
+}
+
+const roomStates = new Map<string, RoomTranscriptionState>();
+
+function getRoomState(meetingId: string): RoomTranscriptionState | undefined {
+  return roomStates.get(meetingId);
+}
+
+function closeRoomConnection(room: RoomTranscriptionState) {
+  if (room.connection) {
     try {
-      state.connection.closeConnection ? state.connection.closeConnection() : state.connection.close();
+      room.connection.closeConnection ? room.connection.closeConnection() : room.connection.close();
     } catch (_) {}
+    room.connection = null;
   }
-  if (state.keepAliveInterval) clearInterval(state.keepAliveInterval);
-  socketStates.delete(socketId);
 }
 
-function attachIsOpen(connection: SocketState['connection']) {
-  if (connection && typeof (connection as Record<string, unknown>).isOpen !== 'function') {
-    (connection as Record<string, unknown>).isOpen = function () {
-      try {
-        const ws = connection!.ws || connection!._socket;
-        return ws ? ws.readyState === 1 : false;
-      } catch (e) {
-        console.log('Error checking connection state:', e);
-        return false;
-      }
-    };
-  }
+async function openAssemblyAIConnection(
+  meetingId: string,
+  room: RoomTranscriptionState
+) {
+  const assemblyai = AssemblyAIWebSocketService.getInstance();
+  const connection = await assemblyai.createLiveTranscription(
+    { sample_rate: 16000 },
+    (result: { text?: string; confidence?: number; start?: number; end?: number; isFinal?: boolean; speakerLabel?: string | null; turnOrder?: number | null }) => {
+      const text = result.text?.trim();
+      if (!text) return;
+
+      const speakerLabel = result.speakerLabel || null;
+      const speakerName = speakerLabel ? (room.speakerMapping[speakerLabel]?.name || null) : null;
+
+      io.to(meetingId).emit('transcript', {
+        meetingId,
+        text,
+        speakerLabel,
+        speakerName,
+        confidence: result.confidence,
+        start: result.start,
+        end: result.end,
+        isFinal: result.isFinal,
+        turnOrder: result.turnOrder ?? null,
+        timestamp: new Date(),
+      });
+    },
+    (error: Error) => {
+      console.error(`❌ AssemblyAI error for room ${meetingId}:`, error);
+      room.connection = null;
+      room.state = 'paused';
+      io.to(meetingId).emit('transcription-error', { error: error.message || String(error) });
+      io.to(meetingId).emit('transcription-state', { state: 'paused', timestamp: new Date() });
+    }
+  );
+
+  connection.on('close', () => {
+    console.log(`🔌 AssemblyAI closed for room ${meetingId}`);
+    room.connection = null;
+  });
+
   return connection;
 }
 
 io.on('connection', (socket) => {
   console.log(`🔌 Client connected: ${socket.id}`);
 
+  // Join a meeting room (all participants call this)
   socket.on('join-meeting', (meetingId: string) => {
     if (typeof meetingId === 'string' && meetingId.trim()) {
       socket.join(meetingId);
@@ -103,95 +137,162 @@ io.on('connection', (socket) => {
     }
   });
 
+  // HOST ONLY: Start transcription for the room
   socket.on('start-transcription', async ({ meetingId, userId, userName }: { meetingId: string; userId: string; userName: string }) => {
     if (!meetingId) {
       socket.emit('transcription-error', { error: 'Missing meetingId' });
       return;
     }
+
+    // Enforce single active connection per room
+    const existing = roomStates.get(meetingId);
+    if (existing && existing.state === 'active') {
+      socket.emit('transcription-error', { error: 'Transcription already active for this room' });
+      return;
+    }
+
     socket.join(meetingId);
-    const state = getState(socket.id);
+
+    // Create or reset room state — host is whoever starts
+    const room: RoomTranscriptionState = existing || {
+      hostSocketId: socket.id,
+      connection: null,
+      state: 'stopped',
+      speakerMapping: {},
+    };
+    room.hostSocketId = socket.id;
+    room.state = 'active';
+    roomStates.set(meetingId, room);
 
     try {
-      const assemblyai = AssemblyAIWebSocketService.getInstance();
-      const connection = attachIsOpen(
-        await assemblyai.createLiveTranscription(
-          { sample_rate: 16000 },
-          async (result: { text?: string; confidence?: number; start?: number; end?: number; isFinal?: boolean }) => {
-            const transcriptData = {
-              meetingId,
-              userId,
-              userName,
-              text: result.text,
-              confidence: result.confidence,
-              start: result.start,
-              end: result.end,
-              isFinal: result.isFinal,
-            };
-            if (transcriptData.text?.trim()) {
-              io.to(meetingId).emit('transcript', { ...transcriptData, timestamp: new Date() });
-              console.log('📤 Transcript broadcasted:', transcriptData.text);
-            }
-          },
-          (error: Error) => {
-            console.error('❌ AssemblyAI error:', error);
-            state.connection = null;
-            state.ready = false;
-            socket.emit('transcription-error', { error: error.message || String(error) });
-          }
-        )
-      );
-
-      state.connection = connection;
-      state.ready = true;
-
-      connection!.on('close', () => {
-        console.log(`🔌 AssemblyAI closed for ${socket.id}`);
-        state.connection = null;
-        state.ready = false;
-      });
-
-      state.keepAliveInterval = setInterval(() => {
-        if (!state.connection || state.connection?.readyState !== 1) {
-          if (state.keepAliveInterval) clearInterval(state.keepAliveInterval);
-          state.keepAliveInterval = null;
-        }
-      }, 30000);
+      const connection = await openAssemblyAIConnection(meetingId, room);
+      room.connection = connection;
 
       socket.emit('transcription-started');
-      console.log(`🎤 AssemblyAI ready for socket ${socket.id}`);
+      io.to(meetingId).emit('transcription-state', { state: 'active', timestamp: new Date() });
+      console.log(`🎤 AssemblyAI started for room ${meetingId} by host ${socket.id}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('Failed to start transcription:', err);
+      room.state = 'stopped';
       socket.emit('transcription-error', { error: message });
     }
   });
 
-  socket.on('audio-chunk', (data: { audioChunk?: string }) => {
+  // HOST ONLY: Audio chunks from host browser → forward to AssemblyAI
+  socket.on('audio-chunk', (data: { meetingId?: string; audioChunk?: string }) => {
     const base64 = data?.audioChunk;
-    if (!base64) return;
-    const state = socketStates.get(socket.id);
-    if (!state?.connection || !state.ready || state.connection.readyState !== 1) {
-      return;
-    }
+    const meetingId = data?.meetingId;
+    if (!base64 || !meetingId) return;
+
+    const room = roomStates.get(meetingId);
+    if (!room || room.hostSocketId !== socket.id) return; // only host sends audio
+    if (!room.connection || room.state !== 'active') return;
+    if (room.connection.readyState !== 1) return;
+
     try {
       const buf = Buffer.from(base64, 'base64');
-      state.connection.sendAudio(buf);
+      room.connection.sendAudio(buf);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('❌ Error sending audio:', message);
-      state.ready = false;
-      state.connection = null;
-      socket.emit('transcription-error', { error: 'Connection closed' });
+      room.connection = null;
+      room.state = 'paused';
+      socket.emit('transcription-error', { error: 'Connection closed unexpectedly' });
+      io.to(meetingId).emit('transcription-state', { state: 'paused', timestamp: new Date() });
     }
   });
 
-  socket.on('stop-transcription', () => {
-    cleanupState(socket.id);
-    socket.emit('transcription-stopped');
+  // HOST ONLY: Pause transcription (closes AssemblyAI WS to save tokens)
+  socket.on('pause-transcription', ({ meetingId }: { meetingId: string }) => {
+    const room = roomStates.get(meetingId);
+    if (!room || room.hostSocketId !== socket.id) return;
+
+    closeRoomConnection(room);
+    room.state = 'paused';
+
+    const timestamp = new Date();
+    socket.emit('transcription-paused');
+    io.to(meetingId).emit('transcription-state', { state: 'paused', timestamp });
+    console.log(`⏸ Transcription paused for room ${meetingId}`);
   });
 
+  // HOST ONLY: Resume transcription (opens a new AssemblyAI WS)
+  socket.on('resume-transcription', async ({ meetingId, userId, userName }: { meetingId: string; userId: string; userName: string }) => {
+    const room = roomStates.get(meetingId);
+    if (!room || room.hostSocketId !== socket.id) return;
+    if (room.state === 'active') return; // already active
+
+    try {
+      const connection = await openAssemblyAIConnection(meetingId, room);
+      room.connection = connection;
+      room.state = 'active';
+
+      const timestamp = new Date();
+      socket.emit('transcription-resumed');
+      io.to(meetingId).emit('transcription-state', { state: 'active', timestamp });
+      console.log(`▶ Transcription resumed for room ${meetingId}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('Failed to resume transcription:', err);
+      socket.emit('transcription-error', { error: message });
+    }
+  });
+
+  // HOST ONLY: Stop transcription entirely
+  socket.on('stop-transcription', ({ meetingId }: { meetingId?: string } = {}) => {
+    if (meetingId) {
+      const room = roomStates.get(meetingId);
+      if (room && room.hostSocketId === socket.id) {
+        closeRoomConnection(room);
+        room.state = 'stopped';
+        io.to(meetingId).emit('transcription-state', { state: 'stopped', timestamp: new Date() });
+        roomStates.delete(meetingId);
+      }
+    }
+    socket.emit('transcription-stopped');
+    console.log(`🛑 Transcription stopped by ${socket.id}`);
+  });
+
+  // HOST ONLY: Resolve actual speaker name for a specific turn by its start timestamp
+  // Used when AssemblyAI returns UNKNOWN or when we want to confirm the speaker
+  socket.on('resolve-turn-speaker', ({ meetingId, turnStart, speakerId, speakerName }: { meetingId: string; turnStart: number; speakerId: string; speakerName: string }) => {
+    const room = roomStates.get(meetingId);
+    if (!room || room.hostSocketId !== socket.id) return;
+    io.to(meetingId).emit('speaker-for-turn', { turnStart, speakerId, speakerName });
+  });
+
+  // HOST ONLY: Lock speaker label → participant identity mapping
+  // Once a label (e.g. "A") is mapped, it is never overwritten
+  socket.on('update-speaker-mapping', ({ meetingId, mapping }: { meetingId: string; mapping: Record<string, SpeakerIdentity> }) => {
+    const room = roomStates.get(meetingId);
+    if (!room || room.hostSocketId !== socket.id) return;
+
+    let updated = false;
+    Object.entries(mapping).forEach(([label, identity]) => {
+      if (!room.speakerMapping[label]) {
+        room.speakerMapping[label] = identity;
+        updated = true;
+        console.log(`🏷️ Speaker ${label} → "${identity.name}" locked for room ${meetingId}`);
+      }
+    });
+
+    if (updated) {
+      io.to(meetingId).emit('speaker-mapping-update', { mapping: room.speakerMapping });
+    }
+  });
+
+  // Cleanup when a socket disconnects
   socket.on('disconnect', () => {
-    cleanupState(socket.id);
+    // If a host disconnects, pause transcription for their room
+    roomStates.forEach((room, meetingId) => {
+      if (room.hostSocketId === socket.id) {
+        closeRoomConnection(room);
+        room.state = 'paused';
+        io.to(meetingId).emit('transcription-state', { state: 'paused', timestamp: new Date() });
+        console.log(`⚠️ Host disconnected — transcription paused for room ${meetingId}`);
+      }
+    });
     console.log(`Client disconnected: ${socket.id}`);
   });
 });

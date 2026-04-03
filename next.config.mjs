@@ -1,23 +1,31 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Temporarily disable images to isolate the issue
-  // images: {
-  //   remotePatterns: [
-  //     {
-  //       protocol: 'https',
-  //       hostname: 'img.clerk.com',
-  //     },
-  //   ],
-  // },
   experimental: {
     instrumentationHook: false,
+    // Prevent webpack from bundling TypeORM — load it natively via Node.js instead
+    // This eliminates "Module not found" warnings for optional DB drivers
+    serverComponentsExternalPackages: ['typeorm', 'pg'],
   },
-  // Disable custom server for Vercel deployment
-  serverRuntimeConfig: {
-    // Will only be available on the server side
-  },
-  publicRuntimeConfig: {
-    // Will be available on both server and client
+  webpack: (config) => {
+    // Suppress missing optional TypeORM driver warnings in webpack output
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      'react-native-sqlite-storage': false,
+      mysql: false,
+      mysql2: false,
+      'better-sqlite3': false,
+      sqlite3: false,
+      mssql: false,
+      oracledb: false,
+      mongodb: false,
+      '@sap/hana-client': false,
+      '@sap/hana-client/extension/Stream': false,
+      ioredis: false,
+      redis: false,
+      'pg-native': false,
+      'pg-query-stream': false,
+    };
+    return config;
   },
 };
 

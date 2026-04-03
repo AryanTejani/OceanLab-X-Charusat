@@ -90,6 +90,24 @@
   color: white;
 }
 
+/* Fix: link buttons in Clerk modal turn black on hover over dark background */
+.cl-footerActionLink,
+.cl-footerActionLink:hover,
+.cl-formResendCodeLink,
+.cl-formResendCodeLink:hover,
+.cl-identityPreviewEditButton,
+.cl-identityPreviewEditButton:hover {
+  color: #7eb2ff !important;
+  background-color: transparent !important;
+}
+
+.cl-footerActionLink:hover,
+.cl-formResendCodeLink:hover,
+.cl-identityPreviewEditButton:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
 /* =============================== */
 
 @layer utilities {

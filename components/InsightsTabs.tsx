@@ -1,7 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { FluidTabs } from '@/components/ui/fluid-tabs';
 import { IMeeting } from '@/lib/entities/Meeting';
+import {
+  FileText,
+  CheckSquare,
+  Lightbulb,
+  Clock,
+  AlignLeft,
+} from 'lucide-react';
 
 type Tab = 'summary' | 'actions' | 'decisions' | 'timeline' | 'transcript';
 
@@ -12,40 +20,35 @@ interface InsightsTabsProps {
 const InsightsTabs = ({ meeting }: InsightsTabsProps) => {
   const [activeTab, setActiveTab] = useState<Tab>('summary');
 
-  const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: 'summary', label: 'Summary' },
+  const tabItems = [
+    { id: 'summary', label: 'Summary', icon: <FileText size={18} /> },
     {
       id: 'actions',
-      label: 'Action Items',
-      count: meeting.actionItems?.length,
+      label: `Actions${meeting.actionItems?.length ? ` (${meeting.actionItems.length})` : ''}`,
+      icon: <CheckSquare size={18} />,
     },
-    { id: 'decisions', label: 'Decisions', count: meeting.decisions?.length },
-    { id: 'timeline', label: 'Timeline', count: meeting.timeline?.length },
-    { id: 'transcript', label: 'Transcript' },
+    {
+      id: 'decisions',
+      label: `Decisions${meeting.decisions?.length ? ` (${meeting.decisions.length})` : ''}`,
+      icon: <Lightbulb size={18} />,
+    },
+    {
+      id: 'timeline',
+      label: `Timeline${meeting.timeline?.length ? ` (${meeting.timeline.length})` : ''}`,
+      icon: <Clock size={18} />,
+    },
+    { id: 'transcript', label: 'Transcript', icon: <AlignLeft size={18} /> },
   ];
 
   return (
     <div>
-      {/* Tab Navigation */}
-      <div className="flex gap-1 border-b border-dark-4 mb-4 overflow-x-auto">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
-              activeTab === tab.id
-                ? 'text-blue-1 border-b-2 border-blue-1'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            {tab.label}
-            {tab.count !== undefined && tab.count > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-dark-4">
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
+      {/* Watermelon UI FluidTabs */}
+      <div className="mb-6 overflow-x-auto">
+        <FluidTabs
+          tabs={tabItems}
+          defaultActive="summary"
+          onChange={(id) => setActiveTab(id as Tab)}
+        />
       </div>
 
       {/* Tab Content */}

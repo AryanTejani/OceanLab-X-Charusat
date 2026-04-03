@@ -3,70 +3,102 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
-import { Sheet, SheetClose, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { sidebarLinks } from '@/constants';
 import { cn } from '@/lib/utils';
 
 const MobileNav = () => {
   const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
     <section className="w-full max-w-[264px]">
-      <Sheet>
-        <SheetTrigger asChild>
-          <Image
-            src="/icons/hamburger.svg"
-            width={36}
-            height={36}
-            alt="hamburger icon"
-            className="cursor-pointer sm:hidden"
-          />
-        </SheetTrigger>
-        <SheetContent side="left" className="border-none bg-dark-1">
-          <Link href="/" className="flex items-center gap-1">
-            <Image
-              src="/icons/logo.svg"
-              width={32}
-              height={32}
-              alt="yoom logo"
+      {/* Hamburger trigger */}
+      <button
+        onClick={() => setIsOpen(true)}
+        className="sm:hidden cursor-pointer"
+        aria-label="Open navigation"
+      >
+        <Image
+          src="/icons/hamburger.svg"
+          width={36}
+          height={36}
+          alt="hamburger icon"
+        />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              key="mobile-nav-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+              onClick={() => setIsOpen(false)}
             />
-            <p className="text-[26px] font-extrabold text-white">YOOM</p>
-          </Link>
-          <div className="flex h-[calc(100vh-72px)] flex-col justify-between overflow-y-auto">
-            <SheetClose asChild>
-              <section className=" flex h-full flex-col gap-6 pt-16 text-white">
+
+            {/* Drawer */}
+            <motion.div
+              key="mobile-nav-drawer"
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              className="fixed left-0 top-0 z-50 h-full w-[264px] border-r border-white/10 bg-dark-1 p-6 text-white shadow-2xl"
+            >
+              <Link
+                href="/"
+                className="flex items-center gap-2 mb-8"
+                onClick={() => setIsOpen(false)}
+              >
+                <Image
+                  src="/icons/logo.svg"
+                  width={32}
+                  height={32}
+                  alt="MeetMind AI logo"
+                />
+                <p className="text-[26px] font-extrabold text-white">
+                  MeetMind <span className="text-blue-1">AI</span>
+                </p>
+              </Link>
+
+              <nav className="flex flex-col gap-3">
                 {sidebarLinks.map((item) => {
                   const isActive = pathname === item.route;
 
                   return (
-                    <SheetClose asChild key={item.route}>
-                      <Link
-                        href={item.route}
-                        key={item.label}
-                        className={cn(
-                          'flex gap-4 items-center p-4 rounded-lg w-full max-w-60',
-                          {
-                            'bg-blue-1': isActive,
-                          }
-                        )}
-                      >
-                        <Image
-                          src={item.imgURL}
-                          alt={item.label}
-                          width={20}
-                          height={20}
-                        />
-                        <p className="font-semibold">{item.label}</p>
-                      </Link>
-                    </SheetClose>
+                    <Link
+                      key={item.route}
+                      href={item.route}
+                      onClick={() => setIsOpen(false)}
+                      className={cn(
+                        'flex items-center gap-4 rounded-xl p-4 font-semibold transition-colors',
+                        isActive
+                          ? 'bg-blue-1 text-white'
+                          : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                      )}
+                    >
+                      <Image
+                        src={item.imgURL}
+                        alt={item.label}
+                        width={20}
+                        height={20}
+                      />
+                      <p>{item.label}</p>
+                    </Link>
                   );
                 })}
-              </section>
-            </SheetClose>
-          </div>
-        </SheetContent>
-      </Sheet>
+              </nav>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </section>
   );
 };

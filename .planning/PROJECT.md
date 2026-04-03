@@ -71,7 +71,7 @@ These features are documented for future builds after the initial platform ships
 
 - **Timeline**: Hackathon deadline is today/tomorrow — must ship a working demo fast
 - **Budget**: Free-tier APIs only (Groq free, Deepgram free tier, ElevenLabs free tier)
-- **Stack**: Next.js (App Router) + Tailwind + shadcn/ui, Supabase (auth + Postgres + storage), Groq (LLM), Deepgram (STT), ElevenLabs (TTS)
+- **Stack**: Next.js (App Router) + Tailwind + Watermelon UI (hackathon sponsor), Supabase (auth + Postgres + storage), Groq (LLM), Deepgram (STT), ElevenLabs (TTS)
 - **Deployment**: Vercel free tier
 - **Existing Code**: User has partial implementation that will be integrated — polish and complete, not rebuild from scratch
 

@@ -57,7 +57,8 @@ router.get('/captions/token', async (_req: Request, res: Response) => {
     });
     if (!response.ok) {
       const text = await response.text();
-      return res.status(500).json({ error: 'Failed to create AssemblyAI token', details: text });
+      console.error('AssemblyAI captions token request failed:', text);
+      return res.status(500).json({ error: 'Failed to create AssemblyAI token' });
     }
     const data = await response.json();
     res.json({ token: data.token });

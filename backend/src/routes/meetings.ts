@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import { requireAuth, getAuth } from '@clerk/express';
 import { getDb } from '../lib/db';
 import { Meeting } from '../entities/Meeting';
-import { Transcript } from '../entities/Transcript';
 
 const router = Router();
 
@@ -51,19 +50,8 @@ router.post('/save', requireAuth(), async (req: Request, res: Response) => {
     const ds = await getDb();
     const repo = ds.getRepository(Meeting);
 
-    // If no transcript provided, try to assemble from real-time saves
-    let finalTranscript = transcriptText || '';
-    if (!finalTranscript) {
-      const txRepo = ds.getRepository(Transcript);
-      const lines = await txRepo.find({
-        where: { meetingId, isFinal: true },
-        order: { createdAt: 'ASC' },
-      });
-      finalTranscript = lines
-        .map((l) => l.text)
-        .filter(Boolean)
-        .join(' ');
-    }
+    // Transcripts accumulate client-side and are sent as transcriptText on meeting end
+    const finalTranscript = transcriptText || '';
 
     await repo.upsert(
       {

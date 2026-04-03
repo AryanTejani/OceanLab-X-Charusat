@@ -59,7 +59,7 @@ router.post('/', requireAuth(), upload.single('audio'), async (req: Request, res
 
     const ds = await getDb();
     const repo = ds.getRepository(Meeting);
-    const meetingId = `upload-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const meetingId = `upload-${crypto.randomUUID()}`;
 
     const meeting = repo.create({
       meetingId,

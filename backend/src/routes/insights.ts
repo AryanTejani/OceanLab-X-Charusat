@@ -70,7 +70,7 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     const groq = getGroqClient();
     const completion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: INSIGHTS_PROMPT + transcript }],
-      model: 'llama-3.3-70b-versatile',
+      model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
       response_format: { type: 'json_object' },
       temperature: 0.3,
       max_tokens: 4096,
@@ -79,22 +79,31 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     const responseText = completion.choices[0]?.message?.content;
     if (!responseText) throw new Error('Empty response from Groq');
 
-    const insights = JSON.parse(responseText);
+    let insights;
+    try {
+      insights = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse Groq response:', parseError);
+      if (meetingId && userId) {
+        await repo.update({ meetingId, userId }, { status: 'failed' });
+      }
+      return res.status(500).json({ error: 'Failed to parse AI response' });
+    }
 
     await repo.update(
       { meetingId, userId },
       {
         summary: insights.summary || '',
-        actionItems: (insights.actionItems || []).map((item: any) => ({
+        actionItems: (insights.actionItems || []).map((item: { text: string; assignee?: string }) => ({
           text: item.text,
           assignee: item.assignee || undefined,
           done: false,
         })),
-        decisions: (insights.decisions || []).map((d: any) => ({
+        decisions: (insights.decisions || []).map((d: { text: string; context?: string }) => ({
           text: d.text,
           context: d.context || '',
         })),
-        timeline: (insights.timeline || []).map((t: any) => ({
+        timeline: (insights.timeline || []).map((t: { time: string; topic: string; summary?: string }) => ({
           time: t.time,
           topic: t.topic,
           summary: t.summary || '',

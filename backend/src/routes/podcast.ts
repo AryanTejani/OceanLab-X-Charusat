@@ -67,17 +67,17 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     const groq = getGroqClient();
     const prompt = PODCAST_SCRIPT_PROMPT
       .replace('{summary}', meeting.summary)
-      .replace('{decisions}', meeting.decisions.map((d: any) => d.text).join('. ') || 'No major decisions recorded.')
+      .replace('{decisions}', meeting.decisions.map((d: { text: string; context?: string }) => d.text).join('. ') || 'No major decisions recorded.')
       .replace(
         '{actionItems}',
         meeting.actionItems
-          .map((a: any) => `${a.text}${a.assignee ? ` (${a.assignee})` : ''}`)
+          .map((a: { text: string; assignee?: string }) => `${a.text}${a.assignee ? ` (${a.assignee})` : ''}`)
           .join('. ') || 'No action items recorded.'
       );
 
     const scriptCompletion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'llama-3.3-70b-versatile',
+      model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
       temperature: 0.7,
       max_tokens: 1024,
     });
@@ -87,7 +87,8 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
 
     // Step 2: Convert script to audio via ElevenLabs
     const elevenlabs = getElevenLabsClient();
-    const audioResponse = await elevenlabs.textToSpeech.convert('JBFqnCBsd6RMkjVDRZzb', {
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'JBFqnCBsd6RMkjVDRZzb';
+    const audioResponse = await elevenlabs.textToSpeech.convert(voiceId, {
       text: podcastScript,
       model_id: 'eleven_turbo_v2_5',
       output_format: 'mp3_44100_128',

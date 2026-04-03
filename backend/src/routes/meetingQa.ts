@@ -1,10 +1,18 @@
 import { Router, Request, Response } from 'express';
+import { requireAuth, getAuth } from '@clerk/express';
 
 const router = Router();
 
+interface TranscriptLine {
+  timestamp?: string;
+  speakerName?: string;
+  text: string;
+}
+
 // POST /api/meeting-qa — Q&A over meeting transcript via OpenRouter
-// No auth required — transcripts sent from client
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireAuth(), async (req: Request, res: Response) => {
+  const auth = getAuth(req);
+  if (!auth.userId) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const { question, meetingId, transcripts } = req.body;
 
@@ -24,7 +32,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const transcriptText = transcripts
-      .map((t: any, index: number) => {
+      .map((t: TranscriptLine, index: number) => {
         const timestamp = t.timestamp
           ? new Date(t.timestamp).toLocaleTimeString()
           : `[${index + 1}]`;
@@ -75,7 +83,7 @@ Please provide a helpful, natural answer based ONLY on the transcript above.`;
   }
 });
 
-function generateSimpleAnswer(question: string, transcripts: any[]): string {
+function generateSimpleAnswer(question: string, transcripts: TranscriptLine[]): string {
   if (!transcripts?.length) return 'No transcript available to answer from.';
 
   const lowerQuestion = question.toLowerCase();

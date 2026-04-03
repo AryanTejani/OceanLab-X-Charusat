@@ -23,11 +23,13 @@ export const useDeepgramTranscription = (meetingId: string) => {
   const { useLocalParticipant, useParticipants } = useCallStateHooks();
   const localParticipant = useLocalParticipant();
   const participants = useParticipants();
-  
+
   const [transcripts, setTranscripts] = useState<TranscriptionResult[]>([]);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedTranscriptPath, setSavedTranscriptPath] = useState<string | null>(null);
+  const [savedTranscriptPath, setSavedTranscriptPath] = useState<string | null>(
+    null,
+  );
 
   const wsRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -35,72 +37,90 @@ export const useDeepgramTranscription = (meetingId: string) => {
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const mixBusRef = useRef<GainNode | null>(null);
-  const remoteSourcesRef = useRef<Map<string, MediaStreamAudioSourceNode>>(new Map());
+  const remoteSourcesRef = useRef<Map<string, MediaStreamAudioSourceNode>>(
+    new Map(),
+  );
   const rescanTimerRef = useRef<NodeJS.Timeout | null>(null);
   const speakerDetectionTimerRef = useRef<NodeJS.Timeout | null>(null);
   const currentSpeakerRef = useRef<{ id: string; name: string } | null>(null);
-  const diarizationMapRef = useRef<Map<string, { id: string; name: string }>>(new Map());
+  const diarizationMapRef = useRef<Map<string, { id: string; name: string }>>(
+    new Map(),
+  );
   type SpeakingSample = { ts: number; active: string[] };
   const speakingHistoryRef = useRef<SpeakingSample[]>([]);
   // Keep latest participant states to avoid stale closures inside timers/WS handlers
   const participantsRef = useRef(participants);
   const localParticipantRef = useRef(localParticipant);
-  useEffect(() => { participantsRef.current = participants; }, [participants]);
-  useEffect(() => { localParticipantRef.current = localParticipant; }, [localParticipant]);
+  useEffect(() => {
+    participantsRef.current = participants;
+  }, [participants]);
+  useEffect(() => {
+    localParticipantRef.current = localParticipant;
+  }, [localParticipant]);
 
   // Detect current speaker using Stream participant state
   const detectCurrentSpeaker = useCallback(() => {
     const parts = participantsRef.current || [];
     const local = localParticipantRef.current;
-    const speakingParticipants = parts.filter(p => p.isSpeaking);
-    
+    const speakingParticipants = parts.filter((p) => p.isSpeaking);
+
     if (speakingParticipants.length > 0) {
       const currentSpeaker = speakingParticipants[0];
       currentSpeakerRef.current = {
         id: currentSpeaker.userId,
-        name: currentSpeaker.name || currentSpeaker.userId?.split('@')[0] || 'Speaker'
+        name:
+          currentSpeaker.name ||
+          currentSpeaker.userId?.split('@')[0] ||
+          'Speaker',
       };
     } else if (local?.isSpeaking) {
       currentSpeakerRef.current = {
         id: local.userId,
-        name: local.name || local.userId?.split('@')[0] || 'Speaker'
+        name: local.name || local.userId?.split('@')[0] || 'Speaker',
       };
     } else {
       // Fallback to local participant
       currentSpeakerRef.current = {
         id: local?.userId || user?.id || 'user-1',
-        name: local?.name || user?.fullName || 'Speaker'
+        name: local?.name || user?.fullName || 'Speaker',
       };
     }
   }, [user]);
 
   // Helper: attach a MediaStream to graph, dedup by track id
-  const attachStreamToGraph = useCallback((stream: MediaStream, label: string) => {
-    if (!audioContextRef.current || !mixBusRef.current) return;
-    const tracks = stream.getAudioTracks();
-    if (!tracks || tracks.length === 0) return;
+  const attachStreamToGraph = useCallback(
+    (stream: MediaStream, label: string) => {
+      if (!audioContextRef.current || !mixBusRef.current) return;
+      const tracks = stream.getAudioTracks();
+      if (!tracks || tracks.length === 0) return;
 
-    tracks.forEach((track) => {
-      const id = `${label}:${track.id}`;
-      if (remoteSourcesRef.current.has(id)) return;
-      try {
-        const singleTrackStream = new MediaStream([track]);
-        const src = audioContextRef.current!.createMediaStreamSource(singleTrackStream);
-        src.connect(mixBusRef.current!);
-        remoteSourcesRef.current.set(id, src);
-        console.log('🔊 Attached audio track:', id);
-      } catch (err) {
-        console.warn('Could not attach track', id, err);
-      }
-    });
-  }, []);
+      tracks.forEach((track) => {
+        const id = `${label}:${track.id}`;
+        if (remoteSourcesRef.current.has(id)) return;
+        try {
+          const singleTrackStream = new MediaStream([track]);
+          const src =
+            audioContextRef.current!.createMediaStreamSource(singleTrackStream);
+          src.connect(mixBusRef.current!);
+          remoteSourcesRef.current.set(id, src);
+          console.log('🔊 Attached audio track:', id);
+        } catch (err) {
+          console.warn('Could not attach track', id, err);
+        }
+      });
+    },
+    [],
+  );
 
   // Scan DOM for Stream Video SDK media elements and attach their audio
   const scanAndAttachRemoteAudio = useCallback(() => {
     try {
       // Stream Video SDK mounts media inside elements with class containing 'str-video'
-      const container = document.querySelector('[class*="str-video"]') || document.body;
-      const mediaEls = Array.from(container.querySelectorAll('video, audio')) as (HTMLVideoElement | HTMLAudioElement)[];
+      const container =
+        document.querySelector('[class*="str-video"]') || document.body;
+      const mediaEls = Array.from(
+        container.querySelectorAll('video, audio'),
+      ) as (HTMLVideoElement | HTMLAudioElement)[];
       mediaEls.forEach((el, idx) => {
         // Skip elements without audio
         let mediaStream: MediaStream | null = null;
@@ -144,7 +164,10 @@ export const useDeepgramTranscription = (meetingId: string) => {
 
     // 1) Attach local microphone (so your voice is included)
     try {
-      const mic = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const mic = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false,
+      });
       streamRef.current = mic;
       const micSrc = audioContext.createMediaStreamSource(mic);
       sourceRef.current = micSrc;
@@ -175,51 +198,53 @@ export const useDeepgramTranscription = (meetingId: string) => {
     // Force cleanup any existing connections first
     console.log('🧹 Cleaning up any existing connections...');
     stopTranscription();
-    
+
     // Small delay to ensure cleanup is complete
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     try {
       setIsTranscribing(true);
       setError(null);
-      
+
       // Get all participants with proper display names
       const getAllParticipants = () => {
         const allParticipants = [];
-        
+
         // Add local participant
         if (localParticipant) {
-          const localName = localParticipant.name || 
-                           localParticipant.userId?.split('@')[0] || 
-                           'Host';
+          const localName =
+            localParticipant.name ||
+            localParticipant.userId?.split('@')[0] ||
+            'Host';
           allParticipants.push({
             id: localParticipant.userId,
             name: localName,
             role: 'Host',
-            isHost: true
+            isHost: true,
           });
         }
-        
+
         // Add remote participants
-        participants.forEach(participant => {
+        participants.forEach((participant) => {
           if (participant.userId !== localParticipant?.userId) {
-            const participantName = participant.name || 
-                                  participant.userId?.split('@')[0] || 
-                                  `Participant ${participant.userId}`;
+            const participantName =
+              participant.name ||
+              participant.userId?.split('@')[0] ||
+              `Participant ${participant.userId}`;
             allParticipants.push({
               id: participant.userId,
               name: participantName,
               role: 'Participant',
-              isHost: false
+              isHost: false,
             });
           }
         });
-        
+
         return allParticipants;
       };
 
       const allParticipants = getAllParticipants();
-      const participantNames = allParticipants.map(p => p.name);
+      const participantNames = allParticipants.map((p) => p.name);
 
       // Start local transcript storage session with enhanced details
       localTranscriptStorageClient.startMeeting(meetingId, {
@@ -230,7 +255,7 @@ export const useDeepgramTranscription = (meetingId: string) => {
         meetingType: 'sales',
         attendees: allParticipants,
         language: 'English',
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
 
       // Setup audio capture
@@ -243,21 +268,31 @@ export const useDeepgramTranscription = (meetingId: string) => {
       }
 
       // Get Deepgram API key (no-cache to avoid stale keys)
-      const response = await fetch(`${API_URL}/api/deepgram-token`, { cache: 'no-store' });
+      const response = await fetch(`${API_URL}/api/deepgram-token`, {
+        cache: 'no-store',
+      });
       const data = await response.json();
-      
+
       if (data.error || !data.apiKey) {
         console.error('Deepgram API key error:', data.error);
         throw new Error('Failed to get Deepgram API key');
       }
 
       // Debug: log masked key info (length only, not the key)
-      try { console.log('🔑 Retrieved Deepgram API key length:', data.apiKey.length); } catch (_) {}
+      try {
+        console.log(
+          '🔑 Retrieved Deepgram API key length:',
+          data.apiKey.length,
+        );
+      } catch (_) {}
 
       // Connect to Deepgram WebSocket - using direct connection
       const endpoint = `wss://api.deepgram.com/v1/listen?model=nova-2&language=en-US&punctuate=true&diarize=true&smart_format=true&interim_results=true&encoding=linear16&sample_rate=16000&channels=1`;
-      console.log('🔗 Connecting to Deepgram:', endpoint.substring(0, 50) + '...');
-      
+      console.log(
+        '🔗 Connecting to Deepgram:',
+        endpoint.substring(0, 50) + '...',
+      );
+
       const ws = new WebSocket(endpoint, ['token', data.apiKey]);
       wsRef.current = ws;
 
@@ -293,7 +328,7 @@ export const useDeepgramTranscription = (meetingId: string) => {
             }
           };
         }
-        
+
         // Start speaker detection timer: sample Stream SDK's isSpeaking and build a small history buffer
         const sampleIntervalMs = 200;
         let sampleCount = 0;
@@ -303,26 +338,44 @@ export const useDeepgramTranscription = (meetingId: string) => {
             const actives: string[] = [];
             const parts = participantsRef.current || [];
             const local = localParticipantRef.current;
-            parts.forEach(p => { if (p.isSpeaking) actives.push(p.userId); });
+            parts.forEach((p) => {
+              if (p.isSpeaking) actives.push(p.userId);
+            });
             if (local?.isSpeaking && !actives.includes(local.userId)) {
               actives.push(local.userId);
             }
-            
+
             // Log every 50 samples (every 10 seconds) to see what's being tracked
             sampleCount++;
             if (sampleCount % 50 === 0 && actives.length > 0) {
               console.log('🎤 Speaker detection sample:', {
                 activeSpeakers: actives,
-                participants: parts.map(p => ({ id: p.userId, name: p.name, isSpeaking: p.isSpeaking })),
-                local: local ? { id: local.userId, name: local.name, isSpeaking: local.isSpeaking } : 'none',
-                historyLength: speakingHistoryRef.current.length
+                participants: parts.map((p) => ({
+                  id: p.userId,
+                  name: p.name,
+                  isSpeaking: p.isSpeaking,
+                })),
+                local: local
+                  ? {
+                      id: local.userId,
+                      name: local.name,
+                      isSpeaking: local.isSpeaking,
+                    }
+                  : 'none',
+                historyLength: speakingHistoryRef.current.length,
               });
             }
-            
-            speakingHistoryRef.current.push({ ts: Date.now(), active: actives });
+
+            speakingHistoryRef.current.push({
+              ts: Date.now(),
+              active: actives,
+            });
             // Keep last 30s
             const cutoff = Date.now() - 30000;
-            while (speakingHistoryRef.current.length > 0 && speakingHistoryRef.current[0].ts < cutoff) {
+            while (
+              speakingHistoryRef.current.length > 0 &&
+              speakingHistoryRef.current[0].ts < cutoff
+            ) {
               speakingHistoryRef.current.shift();
             }
           } catch (err) {
@@ -340,17 +393,20 @@ export const useDeepgramTranscription = (meetingId: string) => {
           if (msg.type === 'Results') {
             const channel = msg.channel;
             const alternatives = channel?.alternatives || [];
-            
+
             if (alternatives.length > 0) {
               const transcript = alternatives[0].transcript;
               const words = alternatives[0].words || [];
               const isFinal = msg.is_final || false;
-              
+
               if (transcript && transcript.trim()) {
                 // Extract speaker label from Deepgram response
                 // Deepgram provides speaker labels in words[0].speaker or channel.speaker
                 let speakerLabelRaw = '';
-                if (words.length > 0 && (words[0] as any).speaker !== undefined) {
+                if (
+                  words.length > 0 &&
+                  (words[0] as any).speaker !== undefined
+                ) {
                   speakerLabelRaw = String((words[0] as any).speaker);
                 } else if ((channel as any).speaker !== undefined) {
                   speakerLabelRaw = String((channel as any).speaker);
@@ -364,13 +420,27 @@ export const useDeepgramTranscription = (meetingId: string) => {
                   channelSpeaker: (channel as any).speaker,
                   speakerLabel,
                   speakingHistoryLength: speakingHistoryRef.current.length,
-                  currentParticipants: participantsRef.current.map(p => ({ id: p.userId, name: p.name, isSpeaking: p.isSpeaking })),
-                  localParticipant: localParticipantRef.current ? { id: localParticipantRef.current.userId, name: localParticipantRef.current.name, isSpeaking: localParticipantRef.current.isSpeaking } : 'none'
+                  currentParticipants: participantsRef.current.map((p) => ({
+                    id: p.userId,
+                    name: p.name,
+                    isSpeaking: p.isSpeaking,
+                  })),
+                  localParticipant: localParticipantRef.current
+                    ? {
+                        id: localParticipantRef.current.userId,
+                        name: localParticipantRef.current.name,
+                        isSpeaking: localParticipantRef.current.isSpeaking,
+                      }
+                    : 'none',
                 });
 
                 // Calculate timing (Deepgram times are in seconds, convert to ms)
-                const start = words.length > 0 ? (words[0].start || 0) * 1000 : Date.now();
-                const end = words.length > 0 ? (words[words.length - 1].end || 0) * 1000 : Date.now();
+                const start =
+                  words.length > 0 ? (words[0].start || 0) * 1000 : Date.now();
+                const end =
+                  words.length > 0
+                    ? (words[words.length - 1].end || 0) * 1000
+                    : Date.now();
 
                 const result: TranscriptionResult = {
                   text: transcript,
@@ -386,59 +456,103 @@ export const useDeepgramTranscription = (meetingId: string) => {
                 let endTs = Date.now();
                 try {
                   if (words.length > 0) {
-                    const first = words.find((w: any) => typeof w.start === 'number');
-                    const last = [...words].reverse().find((w: any) => typeof w.end === 'number');
+                    const first = words.find(
+                      (w: any) => typeof w.start === 'number',
+                    );
+                    const last = [...words]
+                      .reverse()
+                      .find((w: any) => typeof w.end === 'number');
                     if (first?.start != null && last?.end != null) {
                       // Deepgram times are in seconds, convert to ms
                       const now = Date.now();
                       endTs = now;
-                      startTs = now - Math.max(500, Math.min(5000, (last.end * 1000 - first.start * 1000)));
+                      startTs =
+                        now -
+                        Math.max(
+                          500,
+                          Math.min(5000, last.end * 1000 - first.start * 1000),
+                        );
                     }
                   }
                 } catch {}
 
-                const windowSamples = speakingHistoryRef.current.filter(s => s.ts >= startTs && s.ts <= endTs);
+                const windowSamples = speakingHistoryRef.current.filter(
+                  (s) => s.ts >= startTs && s.ts <= endTs,
+                );
                 console.log('🔍 Speaking history window:', {
                   startTs,
                   endTs,
                   windowSamplesCount: windowSamples.length,
-                  samples: windowSamples.map(s => ({ ts: s.ts, active: s.active }))
+                  samples: windowSamples.map((s) => ({
+                    ts: s.ts,
+                    active: s.active,
+                  })),
                 });
 
                 const counts = new Map<string, number>();
-                windowSamples.forEach(s => s.active.forEach(id => counts.set(id, (counts.get(id) || 0) + 1)));
+                windowSamples.forEach((s) =>
+                  s.active.forEach((id) =>
+                    counts.set(id, (counts.get(id) || 0) + 1),
+                  ),
+                );
                 console.log('🔍 Speaker counts:', Array.from(counts.entries()));
-                
+
                 let topId: string | null = null;
                 let topCount = 0;
-                counts.forEach((c, id) => { if (c > topCount) { topCount = c; topId = id; } });
+                counts.forEach((c, id) => {
+                  if (c > topCount) {
+                    topCount = c;
+                    topId = id;
+                  }
+                });
 
                 // Resolve speaker using speaking history (PRIORITY) or diarization map
                 let resolved: { id: string; name: string } | null = null;
-                
+
                 if (topId && topCount > 0) {
                   // Use speaking history result (this is what worked in AssemblyAI)
                   const parts = participantsRef.current || [];
                   const local = localParticipantRef.current;
-                  let name = parts.find(p => p.userId === topId)?.name || '';
+                  let name = parts.find((p) => p.userId === topId)?.name || '';
                   if (!name && local && local.userId === topId) {
                     name = local.name || user?.fullName || 'Host';
                   }
-                  const fallbackName = name || `Speaker ${speakerLabel || ''}`.trim() || 'Speaker';
+                  const fallbackName =
+                    name || `Speaker ${speakerLabel || ''}`.trim() || 'Speaker';
                   resolved = { id: topId, name: fallbackName };
-                  
+
                   // If we have a speaker label, map it for future use
                   if (speakerLabel) {
                     diarizationMapRef.current.set(speakerLabel, resolved);
-                    console.log('✅ MAPPED (history-based):', speakerLabel, '→', resolved.name, '(count:', topCount, ')');
+                    console.log(
+                      '✅ MAPPED (history-based):',
+                      speakerLabel,
+                      '→',
+                      resolved.name,
+                      '(count:',
+                      topCount,
+                      ')',
+                    );
                   } else {
-                    console.log('✅ RESOLVED (history-based):', resolved.name, '(count:', topCount, ', no Deepgram label)');
+                    console.log(
+                      '✅ RESOLVED (history-based):',
+                      resolved.name,
+                      '(count:',
+                      topCount,
+                      ', no Deepgram label)',
+                    );
                   }
                 } else if (speakerLabel) {
                   // Fallback: check if we have a cached mapping for this Deepgram speaker label
-                  resolved = diarizationMapRef.current.get(speakerLabel) || null;
+                  resolved =
+                    diarizationMapRef.current.get(speakerLabel) || null;
                   if (resolved) {
-                    console.log('✅ Using cached mapping:', speakerLabel, '→', resolved.name);
+                    console.log(
+                      '✅ Using cached mapping:',
+                      speakerLabel,
+                      '→',
+                      resolved.name,
+                    );
                   }
                 }
 
@@ -446,24 +560,35 @@ export const useDeepgramTranscription = (meetingId: string) => {
                   // Final fallback: use current speaker or local participant
                   const parts = participantsRef.current || [];
                   const local = localParticipantRef.current;
-                  
+
                   // Check who is currently speaking RIGHT NOW
-                  const speakingNow = parts.find(p => p.isSpeaking) || (local?.isSpeaking ? local : null);
-                  
+                  const speakingNow =
+                    parts.find((p) => p.isSpeaking) ||
+                    (local?.isSpeaking ? local : null);
+
                   if (speakingNow) {
-                    const name = speakingNow.name || speakingNow.userId?.split('@')[0] || 'Speaker';
+                    const name =
+                      speakingNow.name ||
+                      speakingNow.userId?.split('@')[0] ||
+                      'Speaker';
                     resolved = { id: speakingNow.userId, name: name };
-                    console.log('⚠️ Fallback to current speaker:', resolved.name);
+                    console.log(
+                      '⚠️ Fallback to current speaker:',
+                      resolved.name,
+                    );
                   } else {
                     const cur = currentSpeakerRef.current || {
-                      id: (local?.userId) || user?.id || 'user-1',
-                      name: (local?.name) || user?.fullName || (speakerLabel ? `Speaker ${speakerLabel}` : 'Speaker'),
+                      id: local?.userId || user?.id || 'user-1',
+                      name:
+                        local?.name ||
+                        user?.fullName ||
+                        (speakerLabel ? `Speaker ${speakerLabel}` : 'Speaker'),
                     };
                     resolved = cur;
                     console.log('⚠️ Final fallback:', resolved.name);
                   }
                 }
-                
+
                 const speakerId = resolved.id;
                 const speakerName = resolved.name;
 
@@ -471,38 +596,26 @@ export const useDeepgramTranscription = (meetingId: string) => {
                   ...result,
                   speakerId,
                   speakerName,
-                  timestamp: new Date(start)
+                  timestamp: new Date(start),
                 };
-                
-                localTranscriptStorageClient.addTranscript(transcriptWithSpeaker);
 
-                // Real-time save to PostgreSQL (fire-and-forget, mirrors old MongoDB approach)
-                if (result.isFinal && result.text.trim().length > 0) {
-                  fetch(`${API_URL}/api/transcripts/save`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      meetingId,
-                      text: result.text,
-                      confidence: result.confidence,
-                      start: result.start,
-                      end: result.end,
-                      isFinal: true,
-                      userName: speakerName || user?.fullName || 'Speaker',
-                    }),
-                  }).catch(err => console.warn('[transcript save]', err));
-                }
+                localTranscriptStorageClient.addTranscript(
+                  transcriptWithSpeaker,
+                );
+
+                // Transcripts accumulate client-side via localTranscriptStorageClient
+                // and are bulk-saved to DB when meeting ends via /api/meetings/save
 
                 // Only show final transcripts in UI (less restrictive)
                 if (result.isFinal && result.text.trim().length > 0) {
-                  setTranscripts(prev => [...prev, transcriptWithSpeaker]);
+                  setTranscripts((prev) => [...prev, transcriptWithSpeaker]);
                 }
-                
-                console.log('✅ FINAL Transcript:', { 
-                  text: result.text.substring(0, 50), 
-                  speakerId, 
+
+                console.log('✅ FINAL Transcript:', {
+                  text: result.text.substring(0, 50),
+                  speakerId,
                   speakerName,
-                  speakerLabel: speakerLabel || 'none'
+                  speakerLabel: speakerLabel || 'none',
                 });
               }
             }
@@ -519,7 +632,10 @@ export const useDeepgramTranscription = (meetingId: string) => {
 
       ws.onerror = (err) => {
         console.error('❌ WebSocket error:', err);
-        setError('WebSocket connection error: ' + (err && (err as any).message ? (err as any).message : String(err)));
+        setError(
+          'WebSocket connection error: ' +
+            (err && (err as any).message ? (err as any).message : String(err)),
+        );
       };
 
       ws.onclose = (ev) => {
@@ -528,16 +644,18 @@ export const useDeepgramTranscription = (meetingId: string) => {
           const code = (ev as any)?.code ?? 'unknown';
           const reason = (ev as any)?.reason ?? '';
           console.log('🔌 WebSocket closed; code=', code, ' reason=', reason);
-          if (code !== 1000) setError(`WebSocket closed (code=${code}) ${reason}`);
+          if (code !== 1000)
+            setError(`WebSocket closed (code=${code}) ${reason}`);
         } catch (closeErr) {
           console.log('🔌 WebSocket closed (could not parse event)');
         }
         setIsTranscribing(false);
       };
-
     } catch (err) {
       console.error('Failed to start transcription:', err);
-      setError(err instanceof Error ? err.message : 'Failed to start transcription');
+      setError(
+        err instanceof Error ? err.message : 'Failed to start transcription',
+      );
       setIsTranscribing(false);
     }
   }, [user, meetingId, setupAudioCapture]);
@@ -549,7 +667,7 @@ export const useDeepgramTranscription = (meetingId: string) => {
       clearInterval(rescanTimerRef.current);
       rescanTimerRef.current = null;
     }
-    
+
     // Close WebSocket connection
     if (wsRef.current) {
       try {
@@ -583,7 +701,7 @@ export const useDeepgramTranscription = (meetingId: string) => {
     // Stop all audio tracks
     if (streamRef.current) {
       try {
-        streamRef.current.getTracks().forEach(track => {
+        streamRef.current.getTracks().forEach((track) => {
           track.stop();
           console.log('🛑 Stopped audio track:', track.kind);
         });
@@ -606,13 +724,17 @@ export const useDeepgramTranscription = (meetingId: string) => {
     // Disconnect remote sources
     if (remoteSourcesRef.current.size > 0) {
       remoteSourcesRef.current.forEach((src) => {
-        try { src.disconnect(); } catch {}
+        try {
+          src.disconnect();
+        } catch {}
       });
       remoteSourcesRef.current.clear();
     }
 
     if (mixBusRef.current) {
-      try { mixBusRef.current.disconnect(); } catch {}
+      try {
+        mixBusRef.current.disconnect();
+      } catch {}
       mixBusRef.current = null;
     }
 
@@ -636,49 +758,51 @@ export const useDeepgramTranscription = (meetingId: string) => {
   // Clear transcripts
   const clearTranscripts = useCallback(() => {
     console.log('🧹 Clearing transcripts and resetting...');
-    
+
     // Force cleanup any existing connections
     stopTranscription();
-    
+
     setTranscripts([]);
     setSavedTranscriptPath(null);
-    
+
     // Get all participants for reset
     const getAllParticipants = () => {
       const allParticipants = [];
-      
+
       if (localParticipant) {
-        const localName = localParticipant.name || 
-                         localParticipant.userId?.split('@')[0] || 
-                         'Host';
+        const localName =
+          localParticipant.name ||
+          localParticipant.userId?.split('@')[0] ||
+          'Host';
         allParticipants.push({
           id: localParticipant.userId,
           name: localName,
           role: 'Host',
-          isHost: true
+          isHost: true,
         });
       }
-      
-      participants.forEach(participant => {
+
+      participants.forEach((participant) => {
         if (participant.userId !== localParticipant?.userId) {
-          const participantName = participant.name || 
-                                participant.userId?.split('@')[0] || 
-                                `Participant ${participant.userId}`;
+          const participantName =
+            participant.name ||
+            participant.userId?.split('@')[0] ||
+            `Participant ${participant.userId}`;
           allParticipants.push({
             id: participant.userId,
             name: participantName,
             role: 'Participant',
-            isHost: false
+            isHost: false,
           });
         }
       });
-      
+
       return allParticipants;
     };
 
     const allParticipants = getAllParticipants();
-    const participantNames = allParticipants.map(p => p.name);
-    
+    const participantNames = allParticipants.map((p) => p.name);
+
     // Reset local storage session
     localTranscriptStorageClient.startMeeting(meetingId, {
       title: `Meeting ${meetingId}`,
@@ -688,7 +812,7 @@ export const useDeepgramTranscription = (meetingId: string) => {
       meetingType: 'sales',
       attendees: allParticipants,
       language: 'English',
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   }, [meetingId, localParticipant, participants]);
 
@@ -710,4 +834,3 @@ export const useDeepgramTranscription = (meetingId: string) => {
     clearTranscripts,
   };
 };
-

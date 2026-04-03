@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import dbConnect from '@/lib/mongodb';
-import Meeting from '@/lib/models/Meeting';
+import { getDb } from '@/lib/db';
+import { Meeting } from '@/lib/entities/Meeting';
 import { getGroqClient } from '@/lib/groq';
 
 const INSIGHTS_PROMPT = `You are an AI meeting analyst. Analyze the following meeting transcript and produce a structured JSON response.
@@ -47,9 +47,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await dbConnect();
+    const ds = await getDb();
+    const repo = ds.getRepository(Meeting);
 
-    const meeting = await Meeting.findOne({ meetingId, userId });
+    const meeting = await repo.findOneBy({ meetingId, userId });
     if (!meeting) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
     }
@@ -61,7 +62,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Truncate transcript to fit within context window (~120k tokens for llama-3.3-70b)
     const maxChars = 100000;
     const transcript =
       meeting.transcriptText.length > maxChars
@@ -70,12 +70,7 @@ export async function POST(request: NextRequest) {
 
     const groq = getGroqClient();
     const completion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: 'user',
-          content: INSIGHTS_PROMPT + transcript,
-        },
-      ],
+      messages: [{ role: 'user', content: INSIGHTS_PROMPT + transcript }],
       model: 'llama-3.3-70b-versatile',
       response_format: { type: 'json_object' },
       temperature: 0.3,
@@ -89,31 +84,34 @@ export async function POST(request: NextRequest) {
 
     const insights = JSON.parse(responseText);
 
-    // Update meeting with insights
-    meeting.summary = insights.summary || '';
-    meeting.actionItems = (insights.actionItems || []).map(
-      (item: { text: string; assignee?: string }) => ({
-        text: item.text,
-        assignee: item.assignee || undefined,
-        done: false,
-      })
+    await repo.update(
+      { meetingId },
+      {
+        summary: insights.summary || '',
+        actionItems: (insights.actionItems || []).map(
+          (item: { text: string; assignee?: string }) => ({
+            text: item.text,
+            assignee: item.assignee || undefined,
+            done: false,
+          })
+        ),
+        decisions: (insights.decisions || []).map(
+          (d: { text: string; context?: string }) => ({
+            text: d.text,
+            context: d.context || '',
+          })
+        ),
+        timeline: (insights.timeline || []).map(
+          (t: { time: string; topic: string; summary?: string }) => ({
+            time: t.time,
+            topic: t.topic,
+            summary: t.summary || '',
+          })
+        ),
+        keyTopics: insights.keyTopics || [],
+        status: 'completed',
+      }
     );
-    meeting.decisions = (insights.decisions || []).map(
-      (d: { text: string; context?: string }) => ({
-        text: d.text,
-        context: d.context || '',
-      })
-    );
-    meeting.timeline = (insights.timeline || []).map(
-      (t: { time: string; topic: string; summary?: string }) => ({
-        time: t.time,
-        topic: t.topic,
-        summary: t.summary || '',
-      })
-    );
-    meeting.keyTopics = insights.keyTopics || [];
-    meeting.status = 'completed';
-    await meeting.save();
 
     return NextResponse.json({
       success: true,
@@ -123,15 +121,11 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error generating insights:', error);
 
-    // Try to mark meeting as failed
     try {
-      await dbConnect();
       const { meetingId } = await request.clone().json();
       if (meetingId) {
-        await Meeting.findOneAndUpdate(
-          { meetingId },
-          { status: 'failed' }
-        );
+        const ds = await getDb();
+        await ds.getRepository(Meeting).update({ meetingId }, { status: 'failed' });
       }
     } catch {}
 

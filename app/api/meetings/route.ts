@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import dbConnect from '@/lib/mongodb';
-import Meeting from '@/lib/models/Meeting';
+import { getDb } from '@/lib/db';
+import { Meeting } from '@/lib/entities/Meeting';
 
 export async function GET() {
   try {
@@ -10,12 +10,22 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await dbConnect();
+    const ds = await getDb();
+    const repo = ds.getRepository(Meeting);
 
-    const meetings = await Meeting.find({ userId })
-      .sort({ createdAt: -1 })
-      .select('meetingId title status podcastStatus participants createdAt keyTopics')
-      .lean();
+    const meetings = await repo.find({
+      where: { userId },
+      select: {
+        meetingId: true,
+        title: true,
+        status: true,
+        podcastStatus: true,
+        participants: true,
+        createdAt: true,
+        keyTopics: true,
+      },
+      order: { createdAt: 'DESC' },
+    });
 
     return NextResponse.json({ meetings });
   } catch (error) {

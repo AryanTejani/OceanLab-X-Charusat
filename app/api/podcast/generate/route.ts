@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import dbConnect from '@/lib/mongodb';
-import Meeting from '@/lib/models/Meeting';
+import { getDb } from '@/lib/db';
+import { Meeting } from '@/lib/entities/Meeting';
 import { getGroqClient } from '@/lib/groq';
 import { getElevenLabsClient } from '@/lib/elevenlabs';
 
@@ -42,9 +42,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await dbConnect();
+    const ds = await getDb();
+    const repo = ds.getRepository(Meeting);
 
-    const meeting = await Meeting.findOne({ meetingId, userId });
+    const meeting = await repo.findOneBy({ meetingId, userId });
     if (!meeting) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
     }
@@ -57,24 +58,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Mark as generating
-    meeting.podcastStatus = 'generating';
-    await meeting.save();
+    await repo.update({ meetingId }, { podcastStatus: 'generating' });
 
     // Step 1: Generate podcast script via Groq
     const groq = getGroqClient();
-    const prompt = PODCAST_SCRIPT_PROMPT.replace('{summary}', meeting.summary)
+    const prompt = PODCAST_SCRIPT_PROMPT
+      .replace('{summary}', meeting.summary)
       .replace(
         '{decisions}',
-        meeting.decisions.map((d: { text: string }) => d.text).join('. ') ||
+        meeting.decisions.map((d) => d.text).join('. ') ||
           'No major decisions recorded.',
       )
       .replace(
         '{actionItems}',
         meeting.actionItems
-          .map(
-            (a: { text: string; assignee?: string }) =>
-              `${a.text}${a.assignee ? ` (${a.assignee})` : ''}`,
-          )
+          .map((a) => `${a.text}${a.assignee ? ` (${a.assignee})` : ''}`)
           .join('. ') || 'No action items recorded.',
       );
 
@@ -101,21 +99,17 @@ export async function POST(request: NextRequest) {
       },
     );
 
-    // Collect audio chunks into a buffer
     const chunks: Uint8Array[] = [];
     for await (const chunk of audioResponse) {
       chunks.push(chunk);
     }
     const audioBuffer = Buffer.concat(chunks);
-    const base64Audio = audioBuffer.toString('base64');
+    const podcastUrl = `data:audio/mpeg;base64,${audioBuffer.toString('base64')}`;
 
-    // Store as base64 data URL in MongoDB (simple for hackathon)
-    const podcastUrl = `data:audio/mpeg;base64,${base64Audio}`;
-
-    meeting.podcastScript = podcastScript;
-    meeting.podcastUrl = podcastUrl;
-    meeting.podcastStatus = 'ready';
-    await meeting.save();
+    await repo.update(
+      { meetingId },
+      { podcastScript, podcastUrl, podcastStatus: 'ready' }
+    );
 
     return NextResponse.json({
       success: true,
@@ -126,13 +120,10 @@ export async function POST(request: NextRequest) {
     console.error('Error generating podcast:', error);
 
     try {
-      await dbConnect();
       const { meetingId } = await request.clone().json();
       if (meetingId) {
-        await Meeting.findOneAndUpdate(
-          { meetingId },
-          { podcastStatus: 'failed' },
-        );
+        const ds = await getDb();
+        await ds.getRepository(Meeting).update({ meetingId }, { podcastStatus: 'failed' });
       }
     } catch {}
 

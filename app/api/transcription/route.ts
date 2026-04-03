@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import Transcript from '@/lib/models/Transcript';
+import { getDb } from '@/lib/db';
+import { Transcript } from '@/lib/entities/Transcript';
 import AssemblyAIWebSocketService from '@/lib/assemblyai-ws';
 
-// Define the TranscriptionResult interface to match the expected type
 interface TranscriptionResult {
   text: string;
   confidence: number;
@@ -14,8 +13,6 @@ interface TranscriptionResult {
 
 export async function POST(request: NextRequest) {
   try {
-    await dbConnect();
-
     const { meetingId, userId, userName, audioData, isLive } = await request.json();
 
     if (!meetingId || !userId || !userName) {
@@ -28,45 +25,42 @@ export async function POST(request: NextRequest) {
     const assemblyaiService = AssemblyAIWebSocketService.getInstance();
 
     if (isLive) {
-      // For live transcription, we'll return a WebSocket connection
       return NextResponse.json({ message: 'Live transcription initiated' });
-    } else {
-      // For recorded audio transcription
-      if (!audioData) {
-        return NextResponse.json(
-          { error: 'Audio data is required for transcription' },
-          { status: 400 }
-        );
-      }
-
-      // Convert base64 audio to buffer
-      const audioBuffer = Buffer.from(audioData, 'base64');
-      
-      // Transcribe the audio
-      const transcriptionResults = await assemblyaiService.transcribeAudio(audioBuffer);
-
-      // Save transcripts to MongoDB
-      const transcripts = await Promise.all(
-        transcriptionResults.map(async (result: TranscriptionResult) => {
-          const transcript = new Transcript({
-            meetingId,
-            userId,
-            userName,
-            text: result.text,
-            confidence: result.confidence,
-            start: result.start,
-            end: result.end,
-            isFinal: result.isFinal,
-          });
-          return await transcript.save();
-        })
-      );
-
-      return NextResponse.json({
-        message: 'Transcription completed',
-        transcripts,
-      });
     }
+
+    if (!audioData) {
+      return NextResponse.json(
+        { error: 'Audio data is required for transcription' },
+        { status: 400 }
+      );
+    }
+
+    const audioBuffer = Buffer.from(audioData, 'base64');
+    const transcriptionResults = await assemblyaiService.transcribeAudio(audioBuffer);
+
+    const ds = await getDb();
+    const repo = ds.getRepository(Transcript);
+
+    const saved = await Promise.all(
+      transcriptionResults.map(async (result: TranscriptionResult) => {
+        const t = repo.create({
+          meetingId,
+          userId,
+          userName,
+          text: result.text,
+          confidence: result.confidence,
+          startMs: result.start,
+          endMs: result.end,
+          isFinal: result.isFinal,
+        });
+        return repo.save(t);
+      })
+    );
+
+    return NextResponse.json({
+      message: 'Transcription completed',
+      transcripts: saved,
+    });
   } catch (error) {
     console.error('Transcription error:', error);
     return NextResponse.json(
@@ -78,8 +72,6 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    await dbConnect();
-
     const { searchParams } = new URL(request.url);
     const meetingId = searchParams.get('meetingId');
 
@@ -90,9 +82,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const transcripts = await Transcript.find({ meetingId })
-      .sort({ timestamp: 1 })
-      .exec();
+    const ds = await getDb();
+    const repo = ds.getRepository(Transcript);
+
+    const transcripts = await repo.find({
+      where: { meetingId },
+      order: { createdAt: 'ASC' },
+    });
 
     return NextResponse.json({ transcripts });
   } catch (error) {
@@ -103,4 +99,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

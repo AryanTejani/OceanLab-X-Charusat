@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import dbConnect from '@/lib/mongodb';
-import Meeting from '@/lib/models/Meeting';
+import { getDb } from '@/lib/db';
+import { Meeting } from '@/lib/entities/Meeting';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,11 +21,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert file to buffer for Deepgram
     const arrayBuffer = await audioFile.arrayBuffer();
     const audioBuffer = Buffer.from(arrayBuffer);
 
-    // Transcribe via Deepgram pre-recorded API
     const deepgramKey = process.env.DEEPGRAM_API_KEY;
     if (!deepgramKey) {
       return NextResponse.json(
@@ -68,11 +66,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create meeting record
-    await dbConnect();
+    const ds = await getDb();
+    const repo = ds.getRepository(Meeting);
     const meetingId = `upload-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-    const meeting = await Meeting.create({
+    const meeting = repo.create({
       meetingId,
       userId,
       title,
@@ -80,6 +78,7 @@ export async function POST(request: NextRequest) {
       status: 'processing',
       participants: [],
     });
+    await repo.save(meeting);
 
     return NextResponse.json({
       success: true,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { IMeeting } from '@/lib/models/Meeting';
+import { IMeeting } from '@/lib/entities/Meeting';
 
 type Tab = 'summary' | 'actions' | 'decisions' | 'timeline' | 'transcript';
 
@@ -14,7 +14,11 @@ const InsightsTabs = ({ meeting }: InsightsTabsProps) => {
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'summary', label: 'Summary' },
-    { id: 'actions', label: 'Action Items', count: meeting.actionItems?.length },
+    {
+      id: 'actions',
+      label: 'Action Items',
+      count: meeting.actionItems?.length,
+    },
     { id: 'decisions', label: 'Decisions', count: meeting.decisions?.length },
     { id: 'timeline', label: 'Timeline', count: meeting.timeline?.length },
     { id: 'transcript', label: 'Transcript' },
@@ -76,7 +80,14 @@ const InsightsTabs = ({ meeting }: InsightsTabsProps) => {
                 >
                   <div className="mt-0.5 size-5 rounded border border-gray-500 flex items-center justify-center flex-shrink-0">
                     {item.done && (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0E78F9" strokeWidth="3">
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#0E78F9"
+                        strokeWidth="3"
+                      >
                         <polyline points="20,6 9,17 4,12" />
                       </svg>
                     )}
@@ -85,7 +96,8 @@ const InsightsTabs = ({ meeting }: InsightsTabsProps) => {
                     <p className="text-white text-sm">{item.text}</p>
                     {item.assignee && (
                       <p className="text-xs text-gray-400 mt-1">
-                        Assigned to: <span className="text-blue-1">{item.assignee}</span>
+                        Assigned to:{' '}
+                        <span className="text-blue-1">{item.assignee}</span>
                       </p>
                     )}
                   </div>
@@ -110,7 +122,9 @@ const InsightsTabs = ({ meeting }: InsightsTabsProps) => {
                     <div>
                       <p className="text-white text-sm">{decision.text}</p>
                       {decision.context && (
-                        <p className="text-xs text-gray-400 mt-1">{decision.context}</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {decision.context}
+                        </p>
                       )}
                     </div>
                   </div>

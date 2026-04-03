@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import dbConnect from '@/lib/mongodb';
-import Meeting from '@/lib/models/Meeting';
+import { getDb } from '@/lib/db';
+import { Meeting } from '@/lib/entities/Meeting';
 
 export async function GET(
   request: NextRequest,
@@ -14,12 +14,10 @@ export async function GET(
     }
 
     const { id } = await params;
-    await dbConnect();
+    const ds = await getDb();
+    const repo = ds.getRepository(Meeting);
 
-    const meeting = await Meeting.findOne({
-      meetingId: id,
-      userId,
-    }).lean();
+    const meeting = await repo.findOneBy({ meetingId: id, userId });
 
     if (!meeting) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });

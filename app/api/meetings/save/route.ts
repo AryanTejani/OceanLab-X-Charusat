@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import dbConnect from '@/lib/mongodb';
-import Meeting from '@/lib/models/Meeting';
+import { getDb } from '@/lib/db';
+import { Meeting } from '@/lib/entities/Meeting';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,10 +20,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await dbConnect();
+    const ds = await getDb();
+    const repo = ds.getRepository(Meeting);
 
-    const meeting = await Meeting.findOneAndUpdate(
-      { meetingId, userId },
+    await repo.upsert(
       {
         meetingId,
         userId,
@@ -31,15 +31,16 @@ export async function POST(request: NextRequest) {
         transcriptText,
         participants: participants || [],
         status: 'processing',
-        endTime: new Date(),
+        endedAt: new Date(),
       },
-      { upsert: true, new: true }
+      { conflictPaths: ['meetingId'] }
     );
+
+    const meeting = await repo.findOneByOrFail({ meetingId, userId });
 
     return NextResponse.json({
       success: true,
       meetingId: meeting.meetingId,
-      _id: meeting._id,
       status: meeting.status,
     });
   } catch (error) {

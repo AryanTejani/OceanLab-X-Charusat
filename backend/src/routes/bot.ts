@@ -108,4 +108,16 @@ router.get('/status/:meetingId', requireAuth(), async (req: Request, res: Respon
   }
 });
 
+// GET /api/bot/verify — verify auth token is valid (used by extension)
+router.get('/verify', requireAuth(), async (req: Request, res: Response) => {
+  try {
+    const auth = getAuth(req);
+    const userId = auth.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    res.json({ success: true, userId });
+  } catch (error) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+});
+
 export default router;

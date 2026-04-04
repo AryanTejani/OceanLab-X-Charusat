@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 300px;
+      background: #1C1F2E;
+      color: #e5e7eb;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .header h1 { font-size: 16px; font-weight: 700; color: white; }
+    .header .badge {
+      font-size: 10px;
+      background: #0E78F9;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .auth-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: #252A41;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%; flex-shrink: 0;
+    }
+    .dot.green { background: #22c55e; }
+    .dot.red { background: #ef4444; }
+    .dot.yellow { background: #eab308; }
+    button {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-bottom: 8px;
+    }
+    .btn-send { background: #059669; color: white; }
+    .btn-send:hover { background: #047857; }
+    .btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-login { background: #0E78F9; color: white; }
+    .btn-login:hover { background: #0b65d4; }
+    .status-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px; background: #252A41;
+      border-radius: 8px; font-size: 13px; margin-bottom: 12px;
+    }
+    .meeting-info {
+      font-size: 12px; color: #9ca3af;
+      text-align: center; margin-bottom: 12px;
+    }
+    .footer {
+      margin-top: 12px; text-align: center;
+    }
+    .link {
+      color: #0E78F9; text-decoration: none;
+      font-size: 12px; cursor: pointer;
+    }
+    .link:hover { text-decoration: underline; }
+    .error { color: #ef4444; font-size: 12px; margin-top: 8px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>MeetMind AI</h1>
+    <span class="badge">Extension</span>
+  </div>
+
+  <!-- Auth status -->
+  <div id="auth-row" class="auth-row">
+    <div class="dot" id="auth-dot"></div>
+    <span id="auth-text">Checking...</span>
+  </div>
+
+  <!-- Not logged in -->
+  <div id="login-section" class="hidden">
+    <p style="font-size: 13px; color: #9ca3af; margin-bottom: 12px; text-align: center;">
+      Sign in to MeetMind to use the extension
+    </p>
+    <button id="login-btn" class="btn-login">Sign in to MeetMind</button>
+  </div>
+
+  <!-- Logged in + on meeting page -->
+  <div id="meeting-section" class="hidden">
+    <div id="meeting-info" class="meeting-info"></div>
+    <div id="bot-status" class="status-bar hidden">
+      <div class="dot" id="status-dot"></div>
+      <span id="status-text"></span>
+    </div>
+    <button id="send-bot-btn" class="btn-send">Send Bot to Meeting</button>
+    <div id="error-msg" class="error hidden"></div>
+  </div>
+
+  <!-- Logged in but not on meeting page -->
+  <div id="no-meeting-section" class="hidden">
+    <p style="font-size: 13px; color: #9ca3af; text-align: center;">
+      Navigate to a Google Meet, Zoom, or Teams meeting to send a bot.
+    </p>
+  </div>
+
+  <div class="footer">
+    <a id="dashboard-link" class="link" target="_blank">Open Dashboard</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

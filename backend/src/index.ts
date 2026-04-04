@@ -29,6 +29,7 @@ import botRouter from './routes/bot';
 import webhooksRouter from './routes/webhooks';
 import teamRouter from './routes/team';
 import notificationsRouter from './routes/notifications';
+import organizationRouter from './routes/organization';
 
 const app = express();
 const server = createServer(app);
@@ -48,6 +49,7 @@ app.use('/api/bot', botRouter);
 app.use('/api/webhooks', webhooksRouter);
 app.use('/api/team', teamRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/organization', organizationRouter);
 app.use('/api', tokensRouter);
 app.use('/api/health', healthRouter);
 

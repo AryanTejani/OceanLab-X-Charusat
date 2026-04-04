@@ -12,7 +12,9 @@
     "http://localhost:3000/*",
     "http://localhost:3001/*",
     "https://*.ngrok-free.dev/*",
-    "https://*.ngrok.app/*"
+    "https://*.ngrok.app/*",
+    "https://ocean-lab-x-charusat.vercel.app/*",
+    "https://oceanlab-x-charusat.onrender.com/*"
   ],
   "background": {
     "service_worker": "background.js"

@@ -41,7 +41,7 @@ router.post('/save', requireAuth(), async (req: Request, res: Response) => {
     const { userId } = getAuth(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-    const { meetingId, title, transcriptText, participants } = req.body;
+    const { meetingId, title, participants } = req.body;
 
     if (!meetingId) {
       return res.status(400).json({ error: 'meetingId is required' });
@@ -50,15 +50,13 @@ router.post('/save', requireAuth(), async (req: Request, res: Response) => {
     const ds = await getDb();
     const repo = ds.getRepository(Meeting);
 
-    // Transcripts accumulate client-side and are sent as transcriptText on meeting end
-    const finalTranscript = transcriptText || '';
-
+    // transcriptText is no longer sent from frontend — it lives in the transcripts table
+    // and is assembled by the insights route from individual utterance rows
     await repo.upsert(
       {
         meetingId,
         userId,
         title: title || 'Untitled Meeting',
-        transcriptText: finalTranscript || null,
         participants: participants || [],
         status: 'processing',
         endedAt: new Date(),

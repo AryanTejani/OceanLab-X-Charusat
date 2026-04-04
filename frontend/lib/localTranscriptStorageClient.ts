@@ -1148,6 +1148,18 @@ Enhanced with AI analysis for Meeting Monitor
   }
 
   /**
+   * Update speaker name for a transcript entry matched by start timestamp.
+   * Called when the host resolves a speaker name via Stream isSpeaking.
+   */
+  updateSpeakerName(startMs: number, speakerName: string, speakerId?: string): void {
+    const entry = this.currentTranscripts.find(t => t.start === startMs);
+    if (entry) {
+      entry.speakerName = speakerName;
+      if (speakerId) entry.speakerId = speakerId;
+    }
+  }
+
+  /**
    * Get transcript text for QnA search
    */
   getTranscriptText(): string {

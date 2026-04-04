@@ -31,11 +31,13 @@ class AssemblyAIWebSocketService {
       }
 
       const connectionParams = {
-        sampleRate: options.sample_rate || 16000,
-        formatTurns: true,
-        endOfTurnConfidenceThreshold: 0.7,
-        minEndOfTurnSilenceWhenConfident: 160,
-        maxTurnSilence: 2400
+        sample_rate: options.sample_rate || 16000,
+        speech_model: 'universal-streaming-english',
+        format_turns: true,
+        speaker_labels: true,
+        end_of_turn_confidence_threshold: 0.7,
+        min_turn_silence: 160,
+        max_turn_silence: 2400,
       };
 
       const wsUrl = `${this.baseUrl}?${querystring.stringify(connectionParams)}`;
@@ -66,21 +68,25 @@ class AssemblyAIWebSocketService {
             console.log(`🚀 Session began: ID=${sessionId}, ExpiresAt=${expiresAt}`);
           } else if (msgType === 'Turn') {
             const transcript = data.transcript || '';
-            const formatted = data.turn_is_formatted;
+            const isEndOfTurn = data.end_of_turn === true;
             const confidence = data.end_of_turn_confidence || 0;
+            // speaker_label present on end_of_turn turns — normalize UNKNOWN to null
+            const rawLabel = data.speaker_label || null;
+            const speakerLabel = rawLabel === 'UNKNOWN' ? null : rawLabel;
 
             if (transcript.trim()) {
-              console.log('📝 Processing transcript:', transcript);
-              
+              console.log('📝 Turn:', transcript, '| end_of_turn:', isEndOfTurn, '| Speaker:', speakerLabel || 'pending');
+
               const result = {
                 text: transcript,
                 confidence: confidence,
                 start: data.words?.[0]?.start || 0,
                 end: data.words?.[data.words.length - 1]?.end || 0,
-                isFinal: formatted || false,
+                isFinal: isEndOfTurn,
+                speakerLabel,
+                turnOrder: data.turn_order ?? null,
               };
 
-              console.log('✅ Sending transcript to client:', result);
               onTranscript(result);
             }
           } else if (msgType === 'Termination') {

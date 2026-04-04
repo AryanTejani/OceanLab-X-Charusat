@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 interface ParticipantEmailPayload {
   to: string;
@@ -9,33 +9,19 @@ interface ParticipantEmailPayload {
   keyNotes: string[];
 }
 
-function isSmtpConfigured(): boolean {
-  return !!(
-    process.env.SMTP_HOST &&
-    process.env.SMTP_PORT &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS &&
-    process.env.SMTP_FROM
-  );
+function isEmailConfigured(): boolean {
+  return !!(process.env.RESEND_API_KEY && process.env.SMTP_FROM);
 }
 
-function createTransporter() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_PORT === '465',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+function getResendClient() {
+  return new Resend(process.env.RESEND_API_KEY);
 }
 
 export async function sendParticipantInsightsEmail(
   payload: ParticipantEmailPayload
 ): Promise<boolean> {
-  if (!isSmtpConfigured()) {
-    console.log(`📧 SMTP not configured — skipping email to ${payload.to}`);
+  if (!isEmailConfigured()) {
+    console.log(`📧 Email not configured — skipping email to ${payload.to}`);
     return false;
   }
 
@@ -85,14 +71,15 @@ export async function sendParticipantInsightsEmail(
   ].join('\n');
 
   try {
-    const transporter = createTransporter();
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM,
+    const resend = getResendClient();
+    const { error } = await resend.emails.send({
+      from: process.env.SMTP_FROM!,
       to,
       subject: `Your action items from: ${meetingTitle}`,
       text,
       html,
     });
+    if (error) throw error;
     console.log(`📧 Email sent to ${to}`);
     return true;
   } catch (err) {

@@ -314,6 +314,15 @@ const MeetingInsightsPage = () => {
                       ? 'Retry Podcast'
                       : 'Generate Podcast'}
                 </button>
+
+                <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-3 py-2">
+                  <span className="mt-0.5 text-yellow-400 shrink-0">⚡</span>
+                  <p className="text-[11px] leading-relaxed text-yellow-300/80">
+                    <span className="font-semibold text-yellow-300">Demo limitation:</span>{' '}
+                    ElevenLabs' free tier is reserved for live demos. Podcast audio may not generate on shared servers — but it sounds{' '}
+                    <span className="italic">incredible</span> when it does.
+                  </p>
+                </div>
               </div>
             ))}
 

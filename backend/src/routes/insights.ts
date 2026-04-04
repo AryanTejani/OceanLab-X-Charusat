@@ -99,7 +99,15 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     const meetingRepo = ds.getRepository(Meeting);
     const transcriptRepo = ds.getRepository(Transcript);
 
-    const meeting = await meetingRepo.findOneBy({ meetingId, userId });
+    const meeting = await ds
+      .getRepository(Meeting)
+      .createQueryBuilder('meeting')
+      .where('meeting.meetingId = :meetingId', { meetingId })
+      .andWhere(
+        '(meeting.userId = :userId OR meeting."participantUserIds" @> :userIdJson::jsonb)',
+        { userId, userIdJson: JSON.stringify([userId]) }
+      )
+      .getOne();
     if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
 
     // ── Read transcript from DB (individual utterances, ordered by start time) ──
@@ -150,15 +158,15 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
       insights = JSON.parse(responseText);
     } catch (parseError) {
       console.error('Failed to parse Groq response:', parseError);
-      if (meetingId && userId) {
-        await meetingRepo.update({ meetingId, userId }, { status: 'failed' });
+      if (meetingId) {
+        await meetingRepo.update({ meetingId }, { status: 'failed' });
       }
       return res.status(500).json({ error: 'Failed to parse AI response' });
     }
 
     // Store the denormalised transcript text on Meeting for display in UI
     await meetingRepo.update(
-      { meetingId, userId },
+      { meetingId },
       {
         transcriptText: transcript,
         summary: insights.summary || '',
@@ -187,7 +195,7 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     // Save all resolved speakerIds so invited members can find this meeting in their list
     if (speakerGroups.length > 0) {
       const participantUserIds = speakerGroups.map((g) => g.speakerId);
-      await meetingRepo.update({ meetingId, userId }, { participantUserIds });
+      await meetingRepo.update({ meetingId }, { participantUserIds });
     }
 
     let participantInsights: IParticipantInsight[] = [];
@@ -246,7 +254,7 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
             })
           );
 
-          await meetingRepo.update({ meetingId, userId }, { participantInsights });
+          await meetingRepo.update({ meetingId }, { participantInsights });
         }
       } catch (participantErr) {
         console.error('❌ Failed to generate participant insights:', participantErr);
@@ -256,10 +264,10 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     res.json({ success: true, meetingId, status: 'completed' });
   } catch (error) {
     console.error('Error generating insights:', error);
-    if (meetingId && userId) {
+    if (meetingId) {
       try {
         const ds = await getDb();
-        await ds.getRepository(Meeting).update({ meetingId, userId }, { status: 'failed' });
+        await ds.getRepository(Meeting).update({ meetingId }, { status: 'failed' });
       } catch {}
     }
     res.status(500).json({ error: 'Failed to generate insights' });

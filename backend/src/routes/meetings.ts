@@ -54,17 +54,29 @@ router.post('/save', requireAuth(), async (req: Request, res: Response) => {
 
     // transcriptText is no longer sent from frontend — it lives in the transcripts table
     // and is assembled by the insights route from individual utterance rows
-    await repo.upsert(
-      {
+    //
+    // Use find-then-insert-or-update to protect the original owner's userId.
+    // TypeORM upsert with conflictPaths generates ON CONFLICT DO UPDATE SET userId = EXCLUDED.userId,
+    // which overwrites the owner if a participant saves after the host. By splitting into
+    // insert (sets userId) vs update (skips userId), the original owner is preserved.
+    const existing = await repo.findOneBy({ meetingId });
+    if (existing) {
+      await repo.update({ meetingId }, {
+        title: title || existing.title || 'Untitled Meeting',
+        participants: participants || existing.participants || [],
+        status: 'processing',
+        endedAt: new Date(),
+      });
+    } else {
+      await repo.insert({
         meetingId,
         userId,
         title: title || 'Untitled Meeting',
         participants: participants || [],
         status: 'processing',
         endedAt: new Date(),
-      },
-      { conflictPaths: ['meetingId'] }
-    );
+      });
+    }
 
     // Populate participantUserIds from transcripts immediately so participants
     // can see the meeting in their list while it is still processing
@@ -85,7 +97,7 @@ router.post('/save', requireAuth(), async (req: Request, res: Response) => {
       console.error('Failed to populate participantUserIds on save:', err);
     }
 
-    const meeting = await repo.findOneByOrFail({ meetingId, userId });
+    const meeting = await repo.findOneByOrFail({ meetingId });
 
     res.json({ success: true, meetingId: meeting.meetingId, status: meeting.status });
   } catch (error) {

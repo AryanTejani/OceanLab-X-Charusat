@@ -54,14 +54,21 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     const ds = await getDb();
     const repo = ds.getRepository(Meeting);
 
-    const meeting = await repo.findOneBy({ meetingId, userId });
+    const meeting = await repo
+      .createQueryBuilder('meeting')
+      .where('meeting.meetingId = :meetingId', { meetingId })
+      .andWhere(
+        '(meeting.userId = :userId OR meeting."participantUserIds" @> :userIdJson::jsonb)',
+        { userId, userIdJson: JSON.stringify([userId]) }
+      )
+      .getOne();
     if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
     if (!meeting.summary) {
       return res.status(400).json({ error: 'Meeting insights must be generated first' });
     }
 
     // Mark as generating
-    await repo.update({ meetingId, userId }, { podcastStatus: 'generating' });
+    await repo.update({ meetingId }, { podcastStatus: 'generating' });
 
     // Step 1: Generate podcast script via Groq
     const groq = getGroqClient();
@@ -119,7 +126,7 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     const podcastUrl = cloudinaryResult.secure_url;
 
     // Step 4: Save to DB
-    await repo.update({ meetingId, userId }, { podcastScript, podcastUrl, podcastStatus: 'ready' });
+    await repo.update({ meetingId }, { podcastScript, podcastUrl, podcastStatus: 'ready' });
 
     res.json({ success: true, meetingId, podcastStatus: 'ready', podcastUrl });
   } catch (error) {
@@ -127,7 +134,7 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     if (meetingId && userId) {
       try {
         const ds = await getDb();
-        await ds.getRepository(Meeting).update({ meetingId, userId }, { podcastStatus: 'failed' });
+        await ds.getRepository(Meeting).update({ meetingId }, { podcastStatus: 'failed' });
       } catch {}
     }
     res.status(500).json({ error: 'Failed to generate podcast' });

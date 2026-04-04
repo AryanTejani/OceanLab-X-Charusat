@@ -8,6 +8,7 @@ import HomeCard from './HomeCard';
 import MeetingModal from './MeetingModal';
 import AudioUpload from './AudioUpload';
 import BotJoin from './BotJoin';
+import TeamMemberSelector from './TeamMemberSelector';
 import { Call, useStreamVideoClient } from '@stream-io/video-react-sdk';
 import { useUser } from '@clerk/nextjs';
 import Loader from './Loader';
@@ -34,6 +35,7 @@ const MeetingTypeList = () => {
   >(undefined);
   const [values, setValues] = useState(initialValues);
   const [callDetail, setCallDetail] = useState<Call>();
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const client = useStreamVideoClient();
   const { user } = useUser();
   const { toast } = useToast();
@@ -56,10 +58,12 @@ const MeetingTypeList = () => {
           starts_at: startsAt,
           custom: {
             description,
+            participantUserIds: selectedMemberIds,
           },
         },
       });
       setCallDetail(call);
+      setSelectedMemberIds([]);
       window.dispatchEvent(new CustomEvent('meeting-scheduled'));
       if (meetingState !== 'isScheduleMeeting' || !values.description) {
         router.push(`/meeting/${call.id}`);
@@ -147,6 +151,10 @@ const MeetingTypeList = () => {
               className="w-full rounded bg-dark-3 p-2 focus:outline-none"
             />
           </div>
+          <TeamMemberSelector
+            selectedMemberIds={selectedMemberIds}
+            onSelectionChange={setSelectedMemberIds}
+          />
         </MeetingModal>
       ) : (
         <MeetingModal
@@ -193,6 +201,10 @@ const MeetingTypeList = () => {
             setValues({ ...values, description: e.target.value })
           }
           className="border-none bg-dark-3 focus-visible:ring-0 focus-visible:ring-offset-0"
+        />
+        <TeamMemberSelector
+          selectedMemberIds={selectedMemberIds}
+          onSelectionChange={setSelectedMemberIds}
         />
       </MeetingModal>
 

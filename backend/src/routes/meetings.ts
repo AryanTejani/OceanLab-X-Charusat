@@ -174,6 +174,53 @@ router.patch('/:meetingId/participants', requireAuth(), async (req: Request, res
   }
 });
 
+// POST /api/meetings/notify-invited — create MeetingInvitation records at meeting creation time
+// Called from frontend right after call.getOrCreate, before the meeting exists in our DB.
+router.post('/notify-invited', requireAuth(), async (req: Request, res: Response) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { meetingId, participantUserIds, meetingTitle } = req.body as {
+      meetingId: string;
+      participantUserIds: string[];
+      meetingTitle: string;
+    };
+
+    if (!meetingId || !Array.isArray(participantUserIds) || participantUserIds.length === 0) {
+      return res.json({ success: true }); // nothing to do
+    }
+
+    const ds = await getDb();
+    const invRepo = ds.getRepository(MeetingInvitation);
+
+    await Promise.allSettled(
+      participantUserIds
+        .filter((id) => id !== userId)
+        .map((inviteeId) =>
+          invRepo
+            .createQueryBuilder()
+            .insert()
+            .into(MeetingInvitation)
+            .values({
+              meetingId,
+              inviterId: userId,
+              inviteeId,
+              meetingTitle: meetingTitle || 'Meeting',
+              status: 'pending',
+            })
+            .orIgnore()
+            .execute()
+        )
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error creating meeting invitations:', error);
+    res.status(500).json({ error: 'Failed to send meeting notifications' });
+  }
+});
+
 // GET /api/meetings/:id — fetch single meeting
 router.get('/:id', requireAuth(), async (req: Request, res: Response) => {
   try {

@@ -30,41 +30,49 @@ router.get('/me', requireAuth(), async (req: Request, res: Response) => {
       });
     }
 
-    // Check if they're an active member of someone else's org (invited before onboarding)
     const ds = await getDb();
-    const memberRow = await ds
-      .getRepository(TeamMember)
-      .findOneBy({ memberId: userId, status: 'active' });
+    const repo = ds.getRepository(TeamMember);
 
-    if (memberRow) {
-      // They were invited — treat as onboarded member
-      // Also fetch the org owner's name for display
+    // Check if they're an active member of someone else's org (invited before onboarding)
+    const activeMemberRow = await repo.findOneBy({ memberId: userId, status: 'active' });
+
+    if (activeMemberRow) {
       let organizationName: string | null = null;
       try {
-        const owner = await clerkClient.users.getUser(memberRow.ownerId);
+        const owner = await clerkClient.users.getUser(activeMemberRow.ownerId);
         const ownerMeta = owner.publicMetadata as { organizationName?: string };
         organizationName = ownerMeta.organizationName || null;
-      } catch {
-        // ok
-      }
+      } catch { /* ok */ }
       return res.json({
         success: true,
-        data: {
-          role: 'member',
-          organizationName,
-          onboardingComplete: true,
-        },
+        data: { role: 'member', organizationName, onboardingComplete: true },
       });
+    }
+
+    // Check if they were invited while they didn't have an account yet (pending row by email)
+    const email = clerkUser.emailAddresses?.[0]?.emailAddress;
+    if (email) {
+      const pendingRow = await repo.findOneBy({ email, status: 'pending' });
+      if (pendingRow) {
+        // Auto-activate: link their Clerk userId to the pending invite
+        await repo.update({ id: pendingRow.id }, { memberId: userId, status: 'active' });
+        let organizationName: string | null = null;
+        try {
+          const owner = await clerkClient.users.getUser(pendingRow.ownerId);
+          const ownerMeta = owner.publicMetadata as { organizationName?: string };
+          organizationName = ownerMeta.organizationName || null;
+        } catch { /* ok */ }
+        return res.json({
+          success: true,
+          data: { role: 'member', organizationName, onboardingComplete: true },
+        });
+      }
     }
 
     // Not onboarded yet
     return res.json({
       success: true,
-      data: {
-        role: null,
-        organizationName: null,
-        onboardingComplete: false,
-      },
+      data: { role: null, organizationName: null, onboardingComplete: false },
     });
   } catch (error) {
     console.error('Error fetching org context:', error);

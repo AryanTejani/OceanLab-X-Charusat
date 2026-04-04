@@ -10,7 +10,8 @@ import AudioUpload from './AudioUpload';
 import BotJoin from './BotJoin';
 import TeamMemberSelector from './TeamMemberSelector';
 import { Call, useStreamVideoClient } from '@stream-io/video-react-sdk';
-import { useUser } from '@clerk/nextjs';
+import { useUser, useAuth } from '@clerk/nextjs';
+import { apiFetch } from '@/lib/api';
 import Loader from './Loader';
 import { Textarea } from './ui/textarea';
 import ReactDatePicker from 'react-datepicker';
@@ -38,6 +39,7 @@ const MeetingTypeList = () => {
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const client = useStreamVideoClient();
   const { user } = useUser();
+  const { getToken } = useAuth();
   const { toast } = useToast();
 
   const createMeeting = async () => {
@@ -60,8 +62,27 @@ const MeetingTypeList = () => {
             description,
             participantUserIds: selectedMemberIds,
           },
+          // Add invited members as actual Stream call members so they appear in useGetCalls
+          ...(selectedMemberIds.length > 0 && {
+            members: selectedMemberIds.map((uid) => ({ user_id: uid })),
+          }),
         },
       });
+
+      // Fire-and-forget: create MeetingInvitation records so members get polled notifications
+      if (selectedMemberIds.length > 0) {
+        getToken().then((token) =>
+          apiFetch('/api/meetings/notify-invited', token, {
+            method: 'POST',
+            body: JSON.stringify({
+              meetingId: call.id,
+              participantUserIds: selectedMemberIds,
+              meetingTitle: description,
+            }),
+          })
+        ).catch(() => {/* non-critical */});
+      }
+
       setCallDetail(call);
       setSelectedMemberIds([]);
       window.dispatchEvent(new CustomEvent('meeting-scheduled'));

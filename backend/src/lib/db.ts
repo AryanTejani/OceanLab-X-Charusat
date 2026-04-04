@@ -6,6 +6,7 @@ dotenv.config({ path: path.join(process.cwd(), '../.env') });
 import { DataSource } from 'typeorm';
 import { Meeting } from '../entities/Meeting';
 import { Transcript } from '../entities/Transcript';
+import { TeamMember } from '../entities/TeamMember';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -19,7 +20,7 @@ function createDataSource(): DataSource {
     ssl: process.env.DATABASE_URL?.includes('supabase')
       ? { rejectUnauthorized: false }
       : undefined,
-    entities: [Meeting, Transcript],
+    entities: [Meeting, Transcript, TeamMember],
     synchronize: process.env.NODE_ENV !== 'production',
     logging: false,
     extra: { family: 4 }, // force IPv4 — Supabase resolves to IPv6 on some networks

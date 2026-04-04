@@ -25,7 +25,8 @@ export default function MeetingNotificationBell() {
   const fetchInvites = async () => {
     try {
       const token = await getToken();
-      const data = await apiFetch('/notifications/meeting-invites', token);
+      const res = await apiFetch('/api/notifications/meeting-invites', token);
+      const data = await res.json();
       if (data?.success && Array.isArray(data.data)) {
         setInvites(data.data);
       }
@@ -54,7 +55,7 @@ export default function MeetingNotificationBell() {
   const dismiss = async (id: string) => {
     try {
       const token = await getToken();
-      await apiFetch(`/notifications/meeting-invites/${id}/dismiss`, token, { method: 'PATCH' });
+      await apiFetch(`/api/notifications/meeting-invites/${id}/dismiss`, token, { method: 'PATCH' });
       setInvites((prev) => prev.filter((inv) => inv.id !== id));
     } catch {
       // silent

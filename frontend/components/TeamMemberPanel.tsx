@@ -14,7 +14,7 @@ interface TeamMemberPanelProps {
   onClose: () => void;
   meetingId: string;
   currentParticipantIds: string[];
-  onParticipantAdded: (userId: string) => void;
+  onParticipantAdded: (id: string) => void;
 }
 
 const TeamMemberPanel = ({

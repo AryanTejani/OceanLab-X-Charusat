@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/use-toast';
 
 interface InviteMemberModalProps {
   onClose: () => void;
-  onSuccess: (member: ITeamMember) => void;
+  onSuccess: (_member: ITeamMember) => void;
 }
 
 const InviteMemberModal = ({ onClose, onSuccess }: InviteMemberModalProps) => {

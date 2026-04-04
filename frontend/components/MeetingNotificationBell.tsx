@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { apiFetch } from '@/lib/api';
@@ -22,7 +22,7 @@ export default function MeetingNotificationBell() {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const fetchInvites = async () => {
+  const fetchInvites = useCallback(async () => {
     try {
       const token = await getToken();
       const res = await apiFetch('/api/notifications/meeting-invites', token);
@@ -33,13 +33,13 @@ export default function MeetingNotificationBell() {
     } catch {
       // silent — polling failure shouldn't disrupt the UI
     }
-  };
+  }, [getToken]);
 
   useEffect(() => {
     fetchInvites();
     const interval = setInterval(fetchInvites, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchInvites]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

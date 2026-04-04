@@ -119,7 +119,7 @@ const TeamPage = () => {
             </p>
           ) : (
             <p className="text-gray-400 max-w-md">
-              You haven't been added to a team yet. Ask your organization owner to invite you.
+              You haven&apos;t been added to a team yet. Ask your organization owner to invite you.
             </p>
           )}
         </div>

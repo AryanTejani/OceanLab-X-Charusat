@@ -87,7 +87,7 @@ export default function OnboardingPage() {
                 </svg>
               </div>
               <div>
-                <p className="font-semibold text-white">I'm an Organization</p>
+                <p className="font-semibold text-white">I&apos;m an Organization</p>
                 <p className="mt-1 text-sm text-gray-400">
                   Create an organization, invite team members, and manage meetings together.
                 </p>
@@ -106,7 +106,7 @@ export default function OnboardingPage() {
                 </svg>
               </div>
               <div>
-                <p className="font-semibold text-white">I'm a Member</p>
+                <p className="font-semibold text-white">I&apos;m a Member</p>
                 <p className="mt-1 text-sm text-gray-400">
                   Join an organization when invited. Participate in team meetings and view insights.
                 </p>

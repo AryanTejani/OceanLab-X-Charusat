@@ -8,7 +8,7 @@ import { ITeamMember } from '@/lib/types';
 
 interface TeamMemberSelectorProps {
   selectedMemberIds: string[];
-  onSelectionChange: (memberIds: string[]) => void;
+  onSelectionChange: (ids: string[]) => void;
 }
 
 const TeamMemberSelector = ({

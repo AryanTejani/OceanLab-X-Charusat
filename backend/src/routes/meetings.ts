@@ -108,6 +108,40 @@ router.post('/save', requireAuth(), async (req: Request, res: Response) => {
   }
 });
 
+// PATCH /api/meetings/:meetingId/participants — update participant list (per D-15)
+router.patch('/:meetingId/participants', requireAuth(), async (req: Request, res: Response) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { meetingId } = req.params;
+    const { participantUserIds } = req.body;
+
+    if (!Array.isArray(participantUserIds)) {
+      return res.status(400).json({ error: 'participantUserIds must be an array' });
+    }
+
+    const ds = await getDb();
+    const repo = ds.getRepository(Meeting);
+    const meeting = await repo.findOneBy({ meetingId });
+
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+
+    if (meeting.userId !== userId && !meeting.participantUserIds.includes(userId)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await repo.update({ meetingId }, { participantUserIds });
+
+    res.json({ success: true, participantUserIds });
+  } catch (error) {
+    console.error('Error updating meeting participants:', error);
+    res.status(500).json({ error: 'Failed to update participants' });
+  }
+});
+
 // GET /api/meetings/:id — fetch single meeting
 router.get('/:id', requireAuth(), async (req: Request, res: Response) => {
   try {

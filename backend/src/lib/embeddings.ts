@@ -1,13 +1,10 @@
-// @xenova/transformers is ESM-only internally — must use dynamic import() in CJS backend
-// Pipeline type is complex union; use a callable interface to avoid overload resolution issues
-interface FeaturePipeline {
-  (text: string, options: { pooling: string; normalize: boolean }): Promise<{ data: Float32Array }>;
-}
+// Type-only import (erased at compile time, safe in CJS)
+type Pipeline = Awaited<ReturnType<typeof import('@xenova/transformers')['pipeline']>>;
 
-let _pipeline: FeaturePipeline | null = null;
-let _initPromise: Promise<FeaturePipeline> | null = null;
+let _pipeline: Pipeline | null = null;
+let _initPromise: Promise<Pipeline> | null = null;
 
-async function getPipeline(): Promise<FeaturePipeline> {
+async function getPipeline(): Promise<Pipeline> {
   if (_pipeline) return _pipeline;
   if (_initPromise) return _initPromise;
 
@@ -16,8 +13,8 @@ async function getPipeline(): Promise<FeaturePipeline> {
     env.cacheDir = './.cache';
     env.backends.onnx.wasm.numThreads = 1;
     const p = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-    _pipeline = p as unknown as FeaturePipeline;
-    return _pipeline;
+    _pipeline = p;
+    return p;
   })();
 
   return _initPromise;
@@ -25,8 +22,9 @@ async function getPipeline(): Promise<FeaturePipeline> {
 
 export async function embedText(text: string): Promise<number[]> {
   const pipe = await getPipeline();
-  const output = await pipe(text, { pooling: 'mean', normalize: true });
-  return Array.from(output.data);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const output = await (pipe as any)(text, { pooling: 'mean', normalize: true });
+  return Array.from(output.data as Float32Array);
 }
 
 export async function embedBatch(texts: string[]): Promise<number[][]> {

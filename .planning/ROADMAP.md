@@ -281,8 +281,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Do NOT change**: Socket.IO events, flushBuffer logic (beyond the index hook), Transcript/Meeting TypeORM entities, other routes, frontend auth flow
 **Plans**: 3 plans
 Plans:
-- [x] 06-01-PLAN.md -- Install RAG packages, Supabase admin client, embeddings module, pgvector migration
-- [ ] 06-02-PLAN.md -- LangGraph RAG graph, SSE route upgrade, flushBuffer indexing hook
+- [ ] 06-01-PLAN.md -- Install RAG packages, Supabase admin client, embeddings module, pgvector migration
+- [x] 06-02-PLAN.md -- LangGraph RAG graph, SSE route upgrade, flushBuffer indexing hook
 - [ ] 06-03-PLAN.md -- Frontend SSE streaming consumer with pulsing cursor
 
 ## Progress

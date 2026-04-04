@@ -13,17 +13,18 @@ create table if not exists transcript_embeddings (
   created_at   timestamptz default now()
 );
 
--- IVFFlat index for approximate nearest-neighbor cosine similarity search
+-- IVFFlat index for cosine similarity search
 create index if not exists transcript_embeddings_embedding_idx
   on transcript_embeddings
   using ivfflat (embedding vector_cosine_ops)
   with (lists = 100);
 
--- Index on meeting_id for fast per-meeting filtering
+-- Index on meeting_id for filtered queries
 create index if not exists transcript_embeddings_meeting_id_idx
   on transcript_embeddings (meeting_id);
 
--- RPC function for vector similarity search scoped to a meeting
+-- RPC: match_transcript_chunks
+-- Returns transcript chunks ranked by cosine similarity to a query embedding
 create or replace function match_transcript_chunks(
   query_embedding vector(384),
   match_meeting_id text,
@@ -39,13 +40,13 @@ returns table (
 language sql stable
 as $$
   select
-    te.id,
-    te.chunk_text,
-    te.speaker_name,
-    te.start_ms,
-    1 - (te.embedding <=> query_embedding) as similarity
-  from transcript_embeddings te
-  where te.meeting_id = match_meeting_id
-  order by te.embedding <=> query_embedding
+    id,
+    chunk_text,
+    speaker_name,
+    start_ms,
+    1 - (embedding <=> query_embedding) as similarity
+  from transcript_embeddings
+  where meeting_id = match_meeting_id
+  order by embedding <=> query_embedding
   limit match_count;
 $$;

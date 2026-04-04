@@ -14,6 +14,9 @@ import { clerkMiddleware } from '@clerk/express';
 import { getDb } from './lib/db';
 import AssemblyAIWebSocketService from './lib/assemblyai-ws';
 import { Transcript } from './entities/Transcript';
+import { warmUpEmbedder, embedBatch } from './lib/embeddings';
+import { getSupabaseAdmin } from './lib/supabaseAdmin';
+import { warmUpGraph } from './lib/qaGraph';
 
 import meetingsRouter from './routes/meetings';
 import insightsRouter from './routes/insights';
@@ -84,6 +87,31 @@ const roomFlushTimers = new Map<string, ReturnType<typeof setInterval>>();
 const FLUSH_BATCH_SIZE = 5;
 const FLUSH_INTERVAL_MS = 30_000;
 
+async function indexTranscriptChunks(
+  meetingId: string,
+  rows: Array<{ text: string; speakerName: string | null; start: number | null }>
+): Promise<void> {
+  const meaningful = rows.filter((r) => r.text.trim().length >= 20);
+  if (meaningful.length === 0) return;
+
+  try {
+    const embeddings = await embedBatch(meaningful.map((r) => r.text));
+    const supabase = getSupabaseAdmin();
+    const records = meaningful.map((r, i) => ({
+      meeting_id: meetingId,
+      chunk_text: r.text,
+      speaker_name: r.speakerName,
+      start_ms: r.start,
+      embedding: embeddings[i],
+    }));
+    const { error } = await supabase.from('transcript_embeddings').insert(records);
+    if (error) console.error('Failed to index transcript chunks:', error);
+    else console.log(`📐 Indexed ${records.length} chunks for meeting ${meetingId}`);
+  } catch (err) {
+    console.error('Background indexing failed:', err);
+  }
+}
+
 async function flushBuffer(meetingId: string) {
   const buffer = roomBuffers.get(meetingId);
   if (!buffer || buffer.length === 0) return;
@@ -108,6 +136,10 @@ async function flushBuffer(meetingId: string) {
   try {
     const ds = await getDb();
     await ds.getRepository(Transcript).insert(rows);
+    // Fire-and-forget vector indexing — never block the flush
+    indexTranscriptChunks(meetingId, rows).catch((err) =>
+      console.error('Background indexing error:', err)
+    );
     console.log(
       `💾 Flushed ${rows.length} transcript(s) for room ${meetingId}:\n` +
       rows.map((r) => `   [${r.speakerName || r.speakerLabel || 'Unknown'}] ${r.text}`).join('\n')
@@ -423,4 +455,6 @@ server.listen(PORT, async () => {
   } catch (e) {
     console.error('❌ PostgreSQL connection failed:', e);
   }
+  warmUpEmbedder();
+  warmUpGraph();
 });

@@ -125,7 +125,7 @@ Plans:
 **Plans**: 3 plans
 Plans:
 - [x] 07-01-PLAN.md -- TeamMember entity, backend team routes (invite/list/remove), shared types
-- [ ] 07-02-PLAN.md -- Team management page with member table, invite modal, sidebar link
+- [x] 07-02-PLAN.md -- Team management page with member table, invite modal, sidebar link
 - [ ] 07-03-PLAN.md -- Meeting creation team selector and in-call team member panel
 
 ## Progress
@@ -141,4 +141,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Polish and Demo Prep | 0/TBD | Not started | - |
 | 5. Live Transcription | 0/TBD | In progress (teammate) | - |
 | 6. Live Q&A RAG | 1/3 | In Progress|  |
-| 7. Team Members | 1/3 | In Progress|  |
+| 7. Team Members | 2/3 | In Progress|  |

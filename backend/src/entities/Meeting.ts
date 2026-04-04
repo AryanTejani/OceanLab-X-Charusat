@@ -37,12 +37,15 @@ export interface IParticipantInsight {
 export interface IMeeting {
   meetingId: string;
   userId: string;
+  botId?: string | null;
+  meetingUrl?: string | null;
+  source?: 'upload' | 'recording' | 'bot';
   title: string;
   startedAt?: Date | null;
   endedAt?: Date | null;
   participants: string[];
   transcriptText?: string | null;
-  status: 'live' | 'processing' | 'completed' | 'failed';
+  status: 'live' | 'processing' | 'completed' | 'failed' | 'bot_joining';
   summary?: string | null;
   actionItems: IActionItem[];
   decisions: IDecision[];
@@ -68,6 +71,15 @@ export class Meeting {
 
   @Column({ type: 'text' })
   userId!: string;
+
+  @Column({ type: 'text', nullable: true })
+  botId!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  meetingUrl!: string | null;
+
+  @Column({ type: 'text', default: 'upload' })
+  source!: string;
 
   @Column({ type: 'text', default: 'Untitled Meeting' })
   title!: string;

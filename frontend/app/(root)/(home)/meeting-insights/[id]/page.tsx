@@ -150,7 +150,11 @@ const MeetingInsightsPage = () => {
       }
       const data = await res.json();
       if (data.podcastUrl) {
-        setMeeting(prev => prev ? { ...prev, podcastUrl: data.podcastUrl, podcastStatus: 'ready' } : prev);
+        setMeeting((prev) =>
+          prev
+            ? { ...prev, podcastUrl: data.podcastUrl, podcastStatus: 'ready' }
+            : prev,
+        );
       } else {
         await fetchMeeting();
       }
@@ -212,10 +216,10 @@ const MeetingInsightsPage = () => {
               minute: '2-digit',
             })}
           </span>
-          {meeting.participants.length > 0 && (
+          {meeting.participants?.length > 0 && (
             <span>
-              {meeting.participants.length} participant
-              {meeting.participants.length !== 1 ? 's' : ''}
+              {meeting.participants?.length} participant
+              {meeting.participants?.length !== 1 ? 's' : ''}
             </span>
           )}
         </div>
@@ -248,7 +252,10 @@ const MeetingInsightsPage = () => {
         {/* Main content */}
         <div className="flex-1 min-w-0">
           {meeting.status === 'completed' ? (
-            <InsightsTabs meeting={meeting as any} currentUserId={userId ?? undefined} />
+            <InsightsTabs
+              meeting={meeting as any}
+              currentUserId={userId ?? undefined}
+            />
           ) : isProcessing ? (
             <InsightsSkeleton />
           ) : meeting.status === 'failed' ? (

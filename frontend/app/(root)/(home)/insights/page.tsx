@@ -9,11 +9,12 @@ import { apiFetch } from '@/lib/api';
 interface MeetingListItem {
   meetingId: string;
   title: string;
-  status: 'live' | 'processing' | 'completed' | 'failed';
+  status: 'live' | 'processing' | 'completed' | 'failed' | 'bot_joining';
   podcastStatus: 'none' | 'generating' | 'ready' | 'failed';
   participants: string[];
   createdAt: string;
   keyTopics: string[];
+  source?: 'upload' | 'recording' | 'bot';
 }
 
 const InsightsPage = () => {
@@ -53,13 +54,21 @@ const InsightsPage = () => {
     <section className="flex size-full flex-col gap-6 text-white">
       <h1 className="text-3xl font-bold">Meeting Insights</h1>
       <p className="text-gray-400">
-        View AI-generated summaries, action items, decisions, and podcast recaps.
+        View AI-generated summaries, action items, decisions, and podcast
+        recaps.
       </p>
 
       {meetings.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="size-16 rounded-full bg-dark-3 flex items-center justify-center mb-4">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#5E6680" strokeWidth="1.5">
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#5E6680"
+              strokeWidth="1.5"
+            >
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
               <line x1="12" y1="19" x2="12" y2="23" />
@@ -73,11 +82,14 @@ const InsightsPage = () => {
       ) : (
         <div className="grid gap-4">
           {meetings.map((meeting) => {
-            const status = statusConfig[meeting.status] || statusConfig.processing;
+            const status =
+              statusConfig[meeting.status] || statusConfig.processing;
             return (
               <div
                 key={meeting.meetingId}
-                onClick={() => router.push(`/meeting-insights/${meeting.meetingId}`)}
+                onClick={() =>
+                  router.push(`/meeting-insights/${meeting.meetingId}`)
+                }
                 className="flex items-center justify-between p-4 rounded-xl bg-dark-3 border border-dark-4 hover:border-blue-1/50 cursor-pointer transition-colors"
               >
                 <div className="flex-1 min-w-0">
@@ -90,6 +102,11 @@ const InsightsPage = () => {
                     >
                       {status.label}
                     </span>
+                    {meeting.source === 'bot' && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex-shrink-0">
+                        Bot
+                      </span>
+                    )}
                     {meeting.podcastStatus === 'ready' && (
                       <span className="px-2 py-0.5 text-xs rounded-full bg-purple-1/20 text-purple-1 border border-purple-1/30 flex-shrink-0">
                         Podcast

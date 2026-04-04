@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import HomeCard from './HomeCard';
 import MeetingModal from './MeetingModal';
 import AudioUpload from './AudioUpload';
+import BotJoin from './BotJoin';
 import { Call, useStreamVideoClient } from '@stream-io/video-react-sdk';
 import { useUser } from '@clerk/nextjs';
 import Loader from './Loader';
@@ -28,6 +29,7 @@ const MeetingTypeList = () => {
     | 'isJoiningMeeting'
     | 'isInstantMeeting'
     | 'isUploadingAudio'
+    | 'isSendingBot'
     | undefined
   >(undefined);
   const [values, setValues] = useState(initialValues);
@@ -103,6 +105,13 @@ const MeetingTypeList = () => {
         description="Analyze any meeting audio"
         className="bg-yellow-1"
         handleClick={() => setMeetingState('isUploadingAudio')}
+      />
+      <HomeCard
+        img="/icons/join-meeting.svg"
+        title="Send Bot"
+        description="Record any meeting automatically"
+        className="bg-emerald-600"
+        handleClick={() => setMeetingState('isSendingBot')}
       />
 
       {!callDetail ? (
@@ -180,7 +189,9 @@ const MeetingTypeList = () => {
       >
         <Input
           placeholder="Meeting name (optional)"
-          onChange={(e) => setValues({ ...values, description: e.target.value })}
+          onChange={(e) =>
+            setValues({ ...values, description: e.target.value })
+          }
           className="border-none bg-dark-3 focus-visible:ring-0 focus-visible:ring-offset-0"
         />
       </MeetingModal>
@@ -192,6 +203,15 @@ const MeetingTypeList = () => {
         className="text-center"
       >
         <AudioUpload onClose={() => setMeetingState(undefined)} />
+      </MeetingModal>
+
+      <MeetingModal
+        isOpen={meetingState === 'isSendingBot'}
+        onClose={() => setMeetingState(undefined)}
+        title="Send Bot to Meeting"
+        className="text-center"
+      >
+        <BotJoin onClose={() => setMeetingState(undefined)} />
       </MeetingModal>
     </section>
   );

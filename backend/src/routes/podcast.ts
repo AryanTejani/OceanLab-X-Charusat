@@ -4,7 +4,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { getDb } from '../lib/db';
 import { Meeting } from '../entities/Meeting';
 import { getGroqClient } from '../lib/groq';
-import { getElevenLabsClient } from '../lib/elevenlabs';
+import { generateSpeech } from '../lib/elevenlabs';
 
 const router = Router();
 
@@ -93,19 +93,8 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     if (!podcastScript) throw new Error('Failed to generate podcast script');
 
     // Step 2: Convert script to audio via ElevenLabs
-    const elevenlabs = getElevenLabsClient();
     const voiceId = process.env.ELEVENLABS_VOICE_ID || 'JBFqnCBsd6RMkjVDRZzb';
-    const audioResponse = await elevenlabs.textToSpeech.convert(voiceId, {
-      text: podcastScript,
-      model_id: 'eleven_turbo_v2_5',
-      output_format: 'mp3_44100_128',
-    });
-
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of audioResponse) {
-      chunks.push(chunk);
-    }
-    const audioBuffer = Buffer.concat(chunks);
+    const audioBuffer = await generateSpeech(podcastScript, voiceId);
 
     // Step 3: Upload to Cloudinary
     const cloudinaryResult = await new Promise<any>((resolve, reject) => {

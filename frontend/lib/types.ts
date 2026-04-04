@@ -30,12 +30,15 @@ export interface IParticipantInsight {
 export interface IMeeting {
   meetingId: string;
   userId: string;
+  botId?: string | null;
+  meetingUrl?: string | null;
+  source?: 'upload' | 'recording' | 'bot';
   title: string;
   startedAt?: Date | null;
   endedAt?: Date | null;
   participants: string[];
   transcriptText?: string | null;
-  status: 'live' | 'processing' | 'completed' | 'failed';
+  status: 'live' | 'processing' | 'completed' | 'failed' | 'bot_joining';
   summary?: string | null;
   actionItems: IActionItem[];
   decisions: IDecision[];
@@ -47,4 +50,18 @@ export interface IMeeting {
   podcastScript?: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ITeamMember {
+  id: string;
+  ownerId: string;
+  memberId: string | null;
+  email: string;
+  role: string;
+  status: 'pending' | 'active';
+  clerkInvitationId: string | null;
+  joinedAt: Date;
+  // Resolved from Clerk (populated by GET /api/team)
+  name?: string;
+  imageUrl?: string;
 }

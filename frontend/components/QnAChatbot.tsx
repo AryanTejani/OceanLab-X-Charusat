@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, Bot, User } from 'lucide-react';
-import localTranscriptStorageClient from '@/lib/localTranscriptStorageClient';
+import { useAuth } from '@clerk/nextjs';
 import { API_URL } from '@/lib/api';
 
 interface Message {
@@ -20,8 +20,10 @@ const QnAChatbot = ({ meetingId }: QnAChatbotProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { getToken } = useAuth();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -39,52 +41,85 @@ const QnAChatbot = ({ meetingId }: QnAChatbotProps) => {
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
-
-    const userMessage: Message = {
-      role: 'user',
-      content: input.trim(),
-      timestamp: new Date(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    const question = input.trim();
     setInput('');
     setIsLoading(true);
+    setIsStreaming(true);
+
+    const userMessage: Message = { role: 'user', content: question, timestamp: new Date() };
+    setMessages(prev => [...prev, userMessage]);
+
+    // Add empty assistant message to stream tokens into
+    setMessages(prev => [...prev, { role: 'assistant', content: '', timestamp: new Date() }]);
 
     try {
-      // Get current transcripts from local storage
-      const transcripts = localTranscriptStorageClient.getAllTranscripts();
-
+      const token = await getToken();
       const response = await fetch(`${API_URL}/api/meeting-qa`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          question: userMessage.content,
-          meetingId: meetingId,
-          transcripts: transcripts,
-        }),
+        body: JSON.stringify({ question, meetingId }),
       });
 
-      const data = await response.json();
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
 
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: data.answer || 'I apologize, but I could not find relevant information in the meeting transcript to answer your question.',
-        timestamp: new Date(),
-      };
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let sseBuffer = '';
 
-      setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error('QnA error:', error);
-      const errorMessage: Message = {
-        role: 'assistant',
-        content: 'Sorry, I encountered an error while processing your question. Please try again.',
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        sseBuffer += decoder.decode(value, { stream: true });
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6);
+          if (payload === '[DONE]') {
+            setIsStreaming(false);
+            break;
+          }
+          try {
+            const parsed = JSON.parse(payload);
+            if (parsed.error) throw new Error(parsed.error);
+            if (parsed.token) {
+              setMessages(prev => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last && last.role === 'assistant') {
+                  updated[updated.length - 1] = { ...last, content: last.content + parsed.token };
+                }
+                return updated;
+              });
+            }
+          } catch (parseErr) {
+            // Skip malformed SSE lines
+          }
+        }
+      }
+    } catch (err) {
+      console.error('QnA streaming error:', err);
+      setMessages(prev => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last && last.role === 'assistant' && last.content === '') {
+          updated[updated.length - 1] = {
+            ...last,
+            content: 'Sorry, I encountered an error while processing your question. Please try again.',
+          };
+        }
+        return updated;
+      });
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
     }
   };
 
@@ -178,17 +213,13 @@ const QnAChatbot = ({ meetingId }: QnAChatbotProps) => {
             </div>
           ))
         )}
-        {isLoading && (
+        {isStreaming && messages.length > 0 && messages[messages.length - 1].content === '' && (
           <div className="flex gap-3 justify-start">
             <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
               <Bot size={16} className="text-white" />
             </div>
             <div className="bg-dark-2 rounded-lg p-3">
-              <div className="flex gap-1">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-              </div>
+              <span className="inline-block w-2 h-4 bg-blue-400 animate-pulse" />
             </div>
           </div>
         )}
@@ -206,11 +237,11 @@ const QnAChatbot = ({ meetingId }: QnAChatbotProps) => {
             onKeyPress={handleKeyPress}
             placeholder="Ask about the meeting..."
             className="flex-1 bg-dark-2 text-white px-4 py-2 rounded-lg border border-dark-3 focus:outline-none focus:border-blue-500"
-            disabled={isLoading}
+            disabled={isLoading || isStreaming}
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || isLoading}
+            disabled={!input.trim() || isLoading || isStreaming}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white p-2 rounded-lg transition-colors"
           >
             <Send size={20} />
@@ -225,4 +256,3 @@ const QnAChatbot = ({ meetingId }: QnAChatbotProps) => {
 };
 
 export default QnAChatbot;
-

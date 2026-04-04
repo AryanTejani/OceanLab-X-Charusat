@@ -86,6 +86,12 @@ const TranscriptionPanel = ({
               Start
             </button>
           )}
+          {host.status === 'connecting' && (
+            <div className="flex items-center gap-2 text-yellow-400 text-sm">
+              <div className="size-3.5 rounded-full border-2 border-yellow-400 border-t-transparent animate-spin flex-shrink-0" />
+              Connecting...
+            </div>
+          )}
           {host.status === 'active' && (
             <>
               <button

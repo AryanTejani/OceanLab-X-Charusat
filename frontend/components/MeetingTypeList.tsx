@@ -58,7 +58,8 @@ const MeetingTypeList = () => {
         },
       });
       setCallDetail(call);
-      if (!values.description) {
+      window.dispatchEvent(new CustomEvent('meeting-scheduled'));
+      if (meetingState !== 'isScheduleMeeting' || !values.description) {
         router.push(`/meeting/${call.id}`);
       }
       toast({
@@ -176,7 +177,13 @@ const MeetingTypeList = () => {
         className="text-center"
         buttonText="Start Meeting"
         handleClick={createMeeting}
-      />
+      >
+        <Input
+          placeholder="Meeting name (optional)"
+          onChange={(e) => setValues({ ...values, description: e.target.value })}
+          className="border-none bg-dark-3 focus-visible:ring-0 focus-visible:ring-offset-0"
+        />
+      </MeetingModal>
 
       <MeetingModal
         isOpen={meetingState === 'isUploadingAudio'}

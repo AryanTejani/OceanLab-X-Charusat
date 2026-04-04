@@ -98,6 +98,12 @@ const CallList = ({ type }: { type: 'ended' | 'upcoming' | 'recordings' }) => {
                 ? () => router.push(`${(meeting as CallRecording).url}`)
                 : () => router.push(`/meeting/${(meeting as Call).id}`)
             }
+            members={
+              (meeting as Call).state?.members?.map((m) => ({
+                name: m.user?.name || m.user_id,
+                image: m.user?.image,
+              })) ?? []
+            }
           />
         ))
       ) : (

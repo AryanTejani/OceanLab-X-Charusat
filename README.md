@@ -72,12 +72,14 @@
 ## 🛠️ Tech Stack
 
 ### Frontend
+
 - **Next.js 14** - React framework with App Router
 - **TypeScript** - Type-safe development
 - **Tailwind CSS** - Utility-first CSS framework
 - **shadcn/ui** - Beautiful UI components
 
 ### Backend & Services
+
 - **Clerk** - Authentication & user management
 - **Stream.io** - Video conferencing infrastructure
 - **Deepgram** - Real-time speech-to-text with diarization
@@ -85,6 +87,7 @@
 - **MongoDB** - Database for meeting data
 
 ### Key Libraries
+
 - `@stream-io/video-react-sdk` - Video SDK
 - `@google/generative-ai` - Gemini AI integration
 - `@clerk/nextjs` - Authentication
@@ -244,25 +247,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## 📝 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 👤 Author
-
-**Prince Raiyani**
-
-- GitHub: [@prince41773](https://github.com/prince41773)
-- Portfolio: [prince41773.github.io/Portfolio/](https://prince41773.github.io/Portfolio/)
-- LinkedIn: [prince-raiyani](https://www.linkedin.com/in/prince-raiyani-695a36250)
-
-## 🙏 Acknowledgments
-
-- Built with [Next.js](https://nextjs.org/)
-- Video infrastructure by [Stream.io](https://getstream.io/)
-- Speech recognition by [Deepgram](https://deepgram.com/)
-- AI capabilities by [Google Gemini](https://deepmind.google/technologies/gemini/)
-
----
-
-<div align="center">
-  <p>Made with ❤️ by Prince Raiyani</p>
-  <p>⭐ Star this repo if you find it helpful!</p>
-</div>

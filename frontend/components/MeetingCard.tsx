@@ -4,8 +4,12 @@ import Image from "next/image";
 
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
-import { avatarImages } from "@/constants";
 import { useToast } from "./ui/use-toast";
+
+interface MeetingMember {
+  name?: string;
+  image?: string;
+}
 
 interface MeetingCardProps {
   title: string;
@@ -16,7 +20,47 @@ interface MeetingCardProps {
   buttonText?: string;
   handleClick: () => void;
   link: string;
+  members?: MeetingMember[];
 }
+
+const MAX_VISIBLE = 4;
+
+const MemberAvatar = ({ member, index }: { member: MeetingMember; index: number }) => {
+  const initials = (member.name || '?')
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const style = { top: 0, left: index * 28 };
+
+  if (member.image) {
+    return (
+      <Image
+        src={member.image}
+        alt={member.name || 'attendee'}
+        width={40}
+        height={40}
+        className={cn("rounded-full object-cover border-2 border-dark-1", { absolute: index > 0 })}
+        style={style}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "size-10 rounded-full bg-blue-1 border-2 border-dark-1 flex items-center justify-center text-white text-xs font-semibold",
+        { absolute: index > 0 }
+      )}
+      style={index > 0 ? style : undefined}
+      title={member.name}
+    >
+      {initials}
+    </div>
+  );
+};
 
 const MeetingCard = ({
   icon,
@@ -27,8 +71,11 @@ const MeetingCard = ({
   handleClick,
   link,
   buttonText,
+  members = [],
 }: MeetingCardProps) => {
   const { toast } = useToast();
+  const visible = members.slice(0, MAX_VISIBLE);
+  const overflow = members.length - MAX_VISIBLE;
 
   return (
     <section className="flex min-h-[258px] w-full flex-col justify-between rounded-[14px] bg-dark-1 px-5 py-8 xl:max-w-[568px]">
@@ -43,20 +90,17 @@ const MeetingCard = ({
       </article>
       <article className={cn("flex justify-center relative", {})}>
         <div className="relative flex w-full max-sm:hidden">
-          {avatarImages.map((img, index) => (
-            <Image
-              key={index}
-              src={img}
-              alt="attendees"
-              width={40}
-              height={40}
-              className={cn("rounded-full", { absolute: index > 0 })}
-              style={{ top: 0, left: index * 28 }}
-            />
+          {visible.map((member, index) => (
+            <MemberAvatar key={index} member={member} index={index} />
           ))}
-          <div className="flex-center absolute left-[136px] size-10 rounded-full border-[5px] border-dark-3 bg-dark-4">
-            +5
-          </div>
+          {overflow > 0 && (
+            <div
+              className="flex-center absolute size-10 rounded-full border-2 border-dark-1 bg-dark-4 text-xs font-medium text-white"
+              style={{ top: 0, left: visible.length * 28 }}
+            >
+              +{overflow}
+            </div>
+          )}
         </div>
         {!isPreviousMeeting && (
           <div className="flex gap-2">

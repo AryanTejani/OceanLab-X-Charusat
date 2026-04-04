@@ -19,7 +19,7 @@ interface SpeakerIdentity {
   name: string;
 }
 
-type TranscriptionStatus = 'idle' | 'active' | 'paused';
+type TranscriptionStatus = 'idle' | 'connecting' | 'active' | 'paused';
 
 export const useHostTranscription = (meetingId: string) => {
   const { user } = useUser();
@@ -250,6 +250,7 @@ export const useHostTranscription = (meetingId: string) => {
   const start = useCallback(async () => {
     if (!user || !meetingId) return;
     setError(null);
+    setStatus('connecting');
     try {
       await setupAudioCapture();
       startSpeakerDetection();
@@ -261,6 +262,9 @@ export const useHostTranscription = (meetingId: string) => {
       seenTurnOrdersRef.current.clear();
 
       wireTranscriptListener(socket);
+
+      // Transition to active only when backend confirms AssemblyAI is connected
+      socket.once('transcription-started', () => setStatus('active'));
 
       socket.emit('start-transcription', {
         meetingId,
@@ -275,11 +279,10 @@ export const useHostTranscription = (meetingId: string) => {
           socket.emit('audio-chunk', { meetingId, audioChunk: arrayBufferToBase64(audioBuffer) });
         };
       }
-
-      setStatus('active');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to start transcription';
       setError(msg);
+      setStatus('idle');
       teardownAudio();
       stopSpeakerDetection();
     }
@@ -296,6 +299,7 @@ export const useHostTranscription = (meetingId: string) => {
   const resume = useCallback(async () => {
     if (!user || !meetingId) return;
     setError(null);
+    setStatus('connecting');
     try {
       await setupAudioCapture();
       startSpeakerDetection();
@@ -307,6 +311,8 @@ export const useHostTranscription = (meetingId: string) => {
       seenTurnOrdersRef.current.clear();
 
       wireTranscriptListener(socket);
+
+      socket.once('transcription-resumed', () => setStatus('active'));
 
       socket.emit('resume-transcription', {
         meetingId,
@@ -321,11 +327,10 @@ export const useHostTranscription = (meetingId: string) => {
           socket.emit('audio-chunk', { meetingId, audioChunk: arrayBufferToBase64(audioBuffer) });
         };
       }
-
-      setStatus('active');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to resume transcription';
       setError(msg);
+      setStatus('paused');
       teardownAudio();
       stopSpeakerDetection();
     }

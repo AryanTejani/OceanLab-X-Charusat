@@ -26,6 +26,20 @@ function createDataSource(): DataSource {
   });
 }
 
+async function runMigrations(ds: DataSource): Promise<void> {
+  const migrations = [
+    `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS "participantInsights" jsonb NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE meetings ADD COLUMN IF NOT EXISTS "participantUserIds" jsonb NOT NULL DEFAULT '[]'`,
+  ];
+  for (const sql of migrations) {
+    try {
+      await ds.query(sql);
+    } catch (err) {
+      console.error('Migration failed:', sql, err);
+    }
+  }
+}
+
 export async function getDb(): Promise<DataSource> {
   if (!global._typeormDs) {
     global._typeormDs = createDataSource();
@@ -38,6 +52,7 @@ export async function getDb(): Promise<DataSource> {
       global._typeormDs = createDataSource();
       await global._typeormDs.initialize();
     }
+    await runMigrations(global._typeormDs);
   }
   return global._typeormDs;
 }

@@ -1,16 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { IMeeting } from '@/lib/types';
+import { IMeeting, IParticipantInsight } from '@/lib/types';
 
 type Tab = 'summary' | 'actions' | 'decisions' | 'timeline' | 'transcript';
+type ActionFilter = 'all' | 'mine';
 
 interface InsightsTabsProps {
   meeting: IMeeting;
+  currentUserId?: string;
 }
 
-const InsightsTabs = ({ meeting }: InsightsTabsProps) => {
+const InsightsTabs = ({ meeting, currentUserId }: InsightsTabsProps) => {
   const [activeTab, setActiveTab] = useState<Tab>('summary');
+  const [actionFilter, setActionFilter] = useState<ActionFilter>('all');
+
+  const myInsight: IParticipantInsight | undefined = currentUserId
+    ? meeting.participantInsights?.find((p) => p.speakerId === currentUserId)
+    : undefined;
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'summary', label: 'Summary' },
@@ -52,6 +59,38 @@ const InsightsTabs = ({ meeting }: InsightsTabsProps) => {
       <div className="min-h-[200px]">
         {activeTab === 'summary' && (
           <div className="space-y-4">
+            {myInsight && (
+              <div className="p-4 rounded-xl bg-blue-1/10 border border-blue-1/30 space-y-3">
+                <h3 className="text-sm font-semibold text-blue-1">My Summary</h3>
+                <p className="text-gray-300 text-sm leading-relaxed">{myInsight.summary}</p>
+                {myInsight.actionItems.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 mb-1">Your Action Items</p>
+                    <ul className="space-y-1">
+                      {myInsight.actionItems.map((item, i) => (
+                        <li key={i} className="text-sm text-white flex items-start gap-2">
+                          <span className="text-blue-1 mt-0.5">•</span>
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {myInsight.keyNotes.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 mb-1">Key Notes for You</p>
+                    <ul className="space-y-1">
+                      {myInsight.keyNotes.map((note, i) => (
+                        <li key={i} className="text-sm text-gray-300 flex items-start gap-2">
+                          <span className="text-purple-400 mt-0.5">•</span>
+                          {note}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
             {meeting.keyTopics && meeting.keyTopics.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {meeting.keyTopics.map((topic, i) => (
@@ -72,7 +111,45 @@ const InsightsTabs = ({ meeting }: InsightsTabsProps) => {
 
         {activeTab === 'actions' && (
           <div className="space-y-3">
-            {meeting.actionItems && meeting.actionItems.length > 0 ? (
+            {myInsight && (
+              <div className="flex gap-1 p-1 rounded-lg bg-dark-3 w-fit mb-2">
+                <button
+                  onClick={() => setActionFilter('all')}
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                    actionFilter === 'all'
+                      ? 'bg-blue-1 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setActionFilter('mine')}
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                    actionFilter === 'mine'
+                      ? 'bg-blue-1 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Mine
+                </button>
+              </div>
+            )}
+            {actionFilter === 'mine' && myInsight ? (
+              myInsight.actionItems.length > 0 ? (
+                myInsight.actionItems.map((item, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-3 p-3 rounded-lg bg-dark-3 border border-dark-4"
+                  >
+                    <div className="mt-0.5 size-5 rounded border border-gray-500 flex items-center justify-center flex-shrink-0" />
+                    <p className="text-white text-sm">{item}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-400">No action items assigned to you.</p>
+              )
+            ) : meeting.actionItems && meeting.actionItems.length > 0 ? (
               meeting.actionItems.map((item, i) => (
                 <div
                   key={i}
@@ -96,8 +173,7 @@ const InsightsTabs = ({ meeting }: InsightsTabsProps) => {
                     <p className="text-white text-sm">{item.text}</p>
                     {item.assignee && (
                       <p className="text-xs text-gray-400 mt-1">
-                        Assigned to:{' '}
-                        <span className="text-blue-1">{item.assignee}</span>
+                        Assigned to: <span className="text-blue-1">{item.assignee}</span>
                       </p>
                     )}
                   </div>

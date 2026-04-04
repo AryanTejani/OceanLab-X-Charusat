@@ -1,4 +1,5 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 /**
  * Authenticated fetch wrapper for the backend API.
@@ -8,10 +9,11 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001
 export async function apiFetch(
   path: string,
   token: string | null,
-  init: RequestInit = {}
+  init: RequestInit = {},
 ): Promise<Response> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
     ...(init.headers as Record<string, string>),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };

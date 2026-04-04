@@ -25,6 +25,8 @@ import uploadRouter from './routes/upload';
 import meetingQaRouter from './routes/meetingQa';
 import tokensRouter from './routes/tokens';
 import healthRouter from './routes/health';
+import botRouter from './routes/bot';
+import webhooksRouter from './routes/webhooks';
 
 const app = express();
 const server = createServer(app);
@@ -40,6 +42,8 @@ app.use('/api/insights', insightsRouter);
 app.use('/api/podcast', podcastRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/meeting-qa', meetingQaRouter);
+app.use('/api/bot', botRouter);
+app.use('/api/webhooks', webhooksRouter);
 app.use('/api', tokensRouter);
 app.use('/api/health', healthRouter);
 

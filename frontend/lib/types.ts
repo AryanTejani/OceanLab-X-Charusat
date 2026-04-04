@@ -30,12 +30,15 @@ export interface IParticipantInsight {
 export interface IMeeting {
   meetingId: string;
   userId: string;
+  botId?: string | null;
+  meetingUrl?: string | null;
+  source?: 'upload' | 'recording' | 'bot';
   title: string;
   startedAt?: Date | null;
   endedAt?: Date | null;
   participants: string[];
   transcriptText?: string | null;
-  status: 'live' | 'processing' | 'completed' | 'failed';
+  status: 'live' | 'processing' | 'completed' | 'failed' | 'bot_joining';
   summary?: string | null;
   actionItems: IActionItem[];
   decisions: IDecision[];

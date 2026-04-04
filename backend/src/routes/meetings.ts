@@ -24,6 +24,8 @@ router.get('/', requireAuth(), async (req: Request, res: Response) => {
         'meeting.participants',
         'meeting.createdAt',
         'meeting.keyTopics',
+        'meeting.source',
+        'meeting.botId',
       ])
       .where('meeting.userId = :userId', { userId })
       .orWhere('meeting."participantUserIds" @> :userIdJson::jsonb', { userIdJson: JSON.stringify([userId]) })

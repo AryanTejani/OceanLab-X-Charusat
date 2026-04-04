@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 4: Polish and Demo Prep** - Error states, edge case hardening, and demo-day preparation
 - [x] **Phase 5: Live Transcription** - Real-time Socket.IO transcription pipeline (IN PROGRESS — teammate)
 - [ ] **Phase 6: Live Q&A RAG** - LangGraph RAG Q&A with Supabase pgvector and SSE streaming
-- [ ] **Phase 7: Team Members** - Invite and manage team members, integrate into meeting creation and in-call UI
+- [x] **Phase 7: Team Members** - Invite and manage team members, integrate into meeting creation and in-call UI (completed 2026-04-04)
 
 ## Phase Details
 
@@ -126,7 +126,7 @@ Plans:
 Plans:
 - [x] 07-01-PLAN.md -- TeamMember entity, backend team routes (invite/list/remove), shared types
 - [x] 07-02-PLAN.md -- Team management page with member table, invite modal, sidebar link
-- [ ] 07-03-PLAN.md -- Meeting creation team selector and in-call team member panel
+- [x] 07-03-PLAN.md -- Meeting creation team selector and in-call team member panel
 
 ## Progress
 
@@ -141,4 +141,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Polish and Demo Prep | 0/TBD | Not started | - |
 | 5. Live Transcription | 0/TBD | In progress (teammate) | - |
 | 6. Live Q&A RAG | 1/3 | In Progress|  |
-| 7. Team Members | 2/3 | In Progress|  |
+| 7. Team Members | 3/3 | Complete   | 2026-04-04 |

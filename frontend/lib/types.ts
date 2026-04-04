@@ -51,3 +51,17 @@ export interface IMeeting {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface ITeamMember {
+  id: string;
+  ownerId: string;
+  memberId: string | null;
+  email: string;
+  role: string;
+  status: 'pending' | 'active';
+  clerkInvitationId: string | null;
+  joinedAt: Date;
+  // Resolved from Clerk (populated by GET /api/team)
+  name?: string;
+  imageUrl?: string;
+}

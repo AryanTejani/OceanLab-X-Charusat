@@ -124,7 +124,7 @@ Plans:
   5. In-call participant panel shows all team members with search and "Add to call" — members already added show "In call" state
 **Plans**: 3 plans
 Plans:
-- [ ] 07-01-PLAN.md -- TeamMember entity, backend team routes (invite/list/remove), shared types
+- [x] 07-01-PLAN.md -- TeamMember entity, backend team routes (invite/list/remove), shared types
 - [ ] 07-02-PLAN.md -- Team management page with member table, invite modal, sidebar link
 - [ ] 07-03-PLAN.md -- Meeting creation team selector and in-call team member panel
 
@@ -141,4 +141,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Polish and Demo Prep | 0/TBD | Not started | - |
 | 5. Live Transcription | 0/TBD | In progress (teammate) | - |
 | 6. Live Q&A RAG | 1/3 | In Progress|  |
-| 7. Team Members | 0/3 | Not started | - |
+| 7. Team Members | 1/3 | In Progress|  |

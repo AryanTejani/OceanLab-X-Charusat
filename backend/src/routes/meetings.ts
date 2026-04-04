@@ -12,21 +12,22 @@ router.get('/', requireAuth(), async (req: Request, res: Response) => {
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     const ds = await getDb();
-    const repo = ds.getRepository(Meeting);
-
-    const meetings = await repo.find({
-      where: { userId },
-      select: {
-        meetingId: true,
-        title: true,
-        status: true,
-        podcastStatus: true,
-        participants: true,
-        createdAt: true,
-        keyTopics: true,
-      },
-      order: { createdAt: 'DESC' },
-    });
+    const meetings = await ds
+      .getRepository(Meeting)
+      .createQueryBuilder('meeting')
+      .select([
+        'meeting.meetingId',
+        'meeting.title',
+        'meeting.status',
+        'meeting.podcastStatus',
+        'meeting.participants',
+        'meeting.createdAt',
+        'meeting.keyTopics',
+      ])
+      .where('meeting.userId = :userId', { userId })
+      .orWhere(':userId = ANY(meeting."participantUserIds"::text[])', { userId })
+      .orderBy('meeting.createdAt', 'DESC')
+      .getMany();
 
     res.json({ meetings });
   } catch (error) {

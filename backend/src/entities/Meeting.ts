@@ -99,6 +99,9 @@ export class Meeting {
   @Column({ type: 'jsonb', default: [] })
   participantInsights!: IParticipantInsight[];
 
+  @Column({ type: 'jsonb', default: [] })
+  participantUserIds!: string[];
+
   @Column({ type: 'text', default: 'none' })
   podcastStatus!: string;
 

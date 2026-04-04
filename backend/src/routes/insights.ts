@@ -184,6 +184,12 @@ router.post('/generate', requireAuth(), async (req: Request, res: Response) => {
     // ── Call 2: Per-participant insights ──────────────────────────────────────
     const speakerGroups = buildParticipantSections(utterances);
 
+    // Save all resolved speakerIds so invited members can find this meeting in their list
+    if (speakerGroups.length > 0) {
+      const participantUserIds = speakerGroups.map((g) => g.speakerId);
+      await meetingRepo.update({ meetingId, userId }, { participantUserIds });
+    }
+
     let participantInsights: IParticipantInsight[] = [];
 
     if (speakerGroups.length > 0) {

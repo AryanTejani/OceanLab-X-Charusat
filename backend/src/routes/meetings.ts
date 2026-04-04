@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth, getAuth } from '@clerk/express';
+import { requireAuth, getAuth, clerkClient } from '@clerk/express';
 import { getDb } from '../lib/db';
 import { Meeting } from '../entities/Meeting';
 import { Transcript } from '../entities/Transcript';
+import { MeetingInvitation } from '../entities/MeetingInvitation';
 
 const router = Router();
 
@@ -105,6 +106,118 @@ router.post('/save', requireAuth(), async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error saving meeting:', error);
     res.status(500).json({ error: 'Failed to save meeting' });
+  }
+});
+
+// PATCH /api/meetings/:meetingId/participants — update participant list (per D-15)
+router.patch('/:meetingId/participants', requireAuth(), async (req: Request, res: Response) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { meetingId } = req.params;
+    const { participantUserIds } = req.body;
+
+    if (!Array.isArray(participantUserIds)) {
+      return res.status(400).json({ error: 'participantUserIds must be an array' });
+    }
+
+    const ds = await getDb();
+    const repo = ds.getRepository(Meeting);
+    const meeting = await repo.findOneBy({ meetingId });
+
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+
+    if (meeting.userId !== userId && !meeting.participantUserIds.includes(userId)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const previous = meeting.participantUserIds || [];
+    await repo.update({ meetingId }, { participantUserIds });
+
+    // Create invitation records for newly added participants (for polling notifications)
+    const newlyAdded = participantUserIds.filter((id: string) => !previous.includes(id) && id !== userId);
+    if (newlyAdded.length > 0) {
+      const invRepo = ds.getRepository(MeetingInvitation);
+      const inviterName = await (async () => {
+        try {
+          const u = await clerkClient.users.getUser(userId);
+          return `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Someone';
+        } catch { return 'Someone'; }
+      })();
+      await Promise.allSettled(
+        newlyAdded.map((inviteeId: string) =>
+          invRepo
+            .createQueryBuilder()
+            .insert()
+            .into(MeetingInvitation)
+            .values({
+              meetingId,
+              inviterId: userId,
+              inviteeId,
+              meetingTitle: meeting.title || 'Meeting',
+              status: 'pending',
+            })
+            .orIgnore() // unique constraint: meetingId + inviteeId
+            .execute()
+        )
+      );
+      void inviterName; // used above in closure
+    }
+
+    res.json({ success: true, participantUserIds });
+  } catch (error) {
+    console.error('Error updating meeting participants:', error);
+    res.status(500).json({ error: 'Failed to update participants' });
+  }
+});
+
+// POST /api/meetings/notify-invited — create MeetingInvitation records at meeting creation time
+// Called from frontend right after call.getOrCreate, before the meeting exists in our DB.
+router.post('/notify-invited', requireAuth(), async (req: Request, res: Response) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { meetingId, participantUserIds, meetingTitle } = req.body as {
+      meetingId: string;
+      participantUserIds: string[];
+      meetingTitle: string;
+    };
+
+    if (!meetingId || !Array.isArray(participantUserIds) || participantUserIds.length === 0) {
+      return res.json({ success: true }); // nothing to do
+    }
+
+    const ds = await getDb();
+    const invRepo = ds.getRepository(MeetingInvitation);
+
+    await Promise.allSettled(
+      participantUserIds
+        .filter((id) => id !== userId)
+        .map((inviteeId) =>
+          invRepo
+            .createQueryBuilder()
+            .insert()
+            .into(MeetingInvitation)
+            .values({
+              meetingId,
+              inviterId: userId,
+              inviteeId,
+              meetingTitle: meetingTitle || 'Meeting',
+              status: 'pending',
+            })
+            .orIgnore()
+            .execute()
+        )
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error creating meeting invitations:', error);
+    res.status(500).json({ error: 'Failed to send meeting notifications' });
   }
 });
 

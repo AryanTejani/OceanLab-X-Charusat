@@ -57,6 +57,10 @@ Progress: [███░░░░░░░] 33%
 
 ## Accumulated Context
 
+### Roadmap Evolution
+
+- Phase 7 added: Team Members — allow users to invite and manage team members under their account
+
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.

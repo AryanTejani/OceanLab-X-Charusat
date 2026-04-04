@@ -7,6 +7,7 @@ import InsightsTabs from '@/components/InsightsTabs';
 import PodcastPlayer from '@/components/PodcastPlayer';
 import Loader from '@/components/Loader';
 import { apiFetch } from '@/lib/api';
+import { IParticipantInsight } from '@/lib/types';
 
 interface MeetingData {
   meetingId: string;
@@ -22,6 +23,7 @@ interface MeetingData {
   participants: string[];
   podcastUrl?: string;
   podcastScript?: string;
+  participantInsights: IParticipantInsight[];
   createdAt: string;
 }
 
@@ -48,7 +50,7 @@ const InsightsSkeleton = () => (
 const MeetingInsightsPage = () => {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
   const [meeting, setMeeting] = useState<MeetingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -118,7 +120,7 @@ const MeetingInsightsPage = () => {
       setGenerating(false);
       stopPolling();
     }
-  }, [id, fetchMeeting]);
+  }, [id, getToken, fetchMeeting]);
 
   // Initial load: fetch → auto-generate if processing → poll for completion
   useEffect(() => {
@@ -246,7 +248,7 @@ const MeetingInsightsPage = () => {
         {/* Main content */}
         <div className="flex-1 min-w-0">
           {meeting.status === 'completed' ? (
-            <InsightsTabs meeting={meeting as any} />
+            <InsightsTabs meeting={meeting as any} currentUserId={userId ?? undefined} />
           ) : isProcessing ? (
             <InsightsSkeleton />
           ) : meeting.status === 'failed' ? (

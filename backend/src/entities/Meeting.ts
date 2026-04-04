@@ -24,6 +24,16 @@ export interface ITimelineEntry {
   summary: string;
 }
 
+export interface IParticipantInsight {
+  speakerId: string;
+  speakerName: string;
+  email?: string;
+  summary: string;
+  actionItems: string[];
+  keyNotes: string[];
+  emailSent: boolean;
+}
+
 export interface IMeeting {
   meetingId: string;
   userId: string;
@@ -38,6 +48,7 @@ export interface IMeeting {
   decisions: IDecision[];
   timeline: ITimelineEntry[];
   keyTopics: string[];
+  participantInsights: IParticipantInsight[];
   podcastStatus: 'none' | 'generating' | 'ready' | 'failed';
   podcastUrl?: string | null;
   podcastScript?: string | null;
@@ -84,6 +95,9 @@ export class Meeting {
 
   @Column({ type: 'jsonb', default: [] })
   timeline!: ITimelineEntry[];
+
+  @Column({ type: 'jsonb', default: [] })
+  participantInsights!: IParticipantInsight[];
 
   @Column({ type: 'text', default: 'none' })
   podcastStatus!: string;

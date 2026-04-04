@@ -5,17 +5,28 @@ import { TeamMember } from '../entities/TeamMember';
 
 const router = Router();
 
-// GET /api/team — list all team members for the authenticated owner
+// GET /api/team — list all team members for the org.
+// Works for both owners (ownerId = userId) and members (memberId = userId).
 router.get('/', requireAuth(), async (req: Request, res: Response) => {
   try {
     const { userId } = getAuth(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     const ds = await getDb();
-    const members = await ds
-      .getRepository(TeamMember)
+    const repo = ds.getRepository(TeamMember);
+
+    // Determine which ownerId's org to return
+    let orgOwnerId: string = userId;
+
+    const asMember = await repo.findOneBy({ memberId: userId, status: 'active' });
+    if (asMember) {
+      // Caller is a member of another org — show that org's members
+      orgOwnerId = asMember.ownerId;
+    }
+
+    const members = await repo
       .createQueryBuilder('tm')
-      .where('tm.ownerId = :userId', { userId })
+      .where('tm.ownerId = :orgOwnerId', { orgOwnerId })
       .orderBy('tm.joinedAt', 'DESC')
       .getMany();
 
@@ -56,7 +67,7 @@ router.get('/', requireAuth(), async (req: Request, res: Response) => {
           }
         }
 
-        // Pending member
+        // Pending member — no Clerk profile yet
         return {
           id: member.id,
           ownerId: member.ownerId,
@@ -79,7 +90,7 @@ router.get('/', requireAuth(), async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/team/invite — send a Clerk invitation and create a pending TeamMember row
+// POST /api/team/invite — owner-only. Sends a Clerk invitation and creates a pending TeamMember row.
 router.post('/invite', requireAuth(), async (req: Request, res: Response) => {
   try {
     const { userId } = getAuth(req);
@@ -94,10 +105,12 @@ router.post('/invite', requireAuth(), async (req: Request, res: Response) => {
     const ds = await getDb();
     const repo = ds.getRepository(TeamMember);
 
-    // Prevent duplicate invitations
-    const existing = await repo.findOneBy({ ownerId: userId, email });
-    if (existing) {
-      return res.status(409).json({ error: 'Member already invited' });
+    // Role enforcement: members cannot invite others — only org owners can
+    const callerAsMember = await repo.findOneBy({ memberId: userId, status: 'active' });
+    if (callerAsMember) {
+      return res.status(403).json({
+        error: 'Only organization owners can invite members. You are a member of another organization.',
+      });
     }
 
     // Prevent self-invite
@@ -107,27 +120,50 @@ router.post('/invite', requireAuth(), async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'You cannot invite yourself' });
     }
 
+    // Exclusive membership: check if the invitee is already in any org
+    let inviteeClerkId: string | null = null;
+    try {
+      const existingUsers = await clerkClient.users.getUserList({ emailAddress: [email] });
+      if (existingUsers.data && existingUsers.data.length > 0) {
+        inviteeClerkId = existingUsers.data[0].id;
+      }
+    } catch (lookupErr) {
+      console.warn('Could not look up Clerk user for exclusive membership check:', lookupErr);
+    }
+
+    if (inviteeClerkId) {
+      const alreadyMember = await repo.findOneBy({ memberId: inviteeClerkId, status: 'active' });
+      if (alreadyMember) {
+        return res.status(409).json({
+          error: 'This user is already a member of another organization.',
+        });
+      }
+    }
+
+    // Prevent duplicate invitations to this org
+    const existing = await repo.findOneBy({ ownerId: userId, email });
+    if (existing) {
+      return res.status(409).json({ error: 'Member already invited to your organization' });
+    }
+
     let clerkInvitationId: string | null = null;
     let status: 'pending' | 'active' = 'pending';
     let memberId: string | null = null;
 
-    try {
-      const invitation = await clerkClient.invitations.createInvitation({
-        emailAddress: email,
-        redirectUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
-      });
-      clerkInvitationId = invitation.id;
-    } catch (clerkErr: unknown) {
-      // If user already exists in Clerk, treat them as active
-      console.warn('Clerk invitation failed (user may already exist):', clerkErr);
+    if (inviteeClerkId) {
+      // User already exists in Clerk — add as active directly (no invite email needed)
+      memberId = inviteeClerkId;
+      status = 'active';
+    } else {
       try {
-        const existingUsers = await clerkClient.users.getUserList({ emailAddress: [email] });
-        if (existingUsers.data && existingUsers.data.length > 0) {
-          memberId = existingUsers.data[0].id;
-          status = 'active';
-        }
-      } catch (lookupErr) {
-        console.error('Failed to look up existing Clerk user:', lookupErr);
+        const invitation = await clerkClient.invitations.createInvitation({
+          emailAddress: email,
+          redirectUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+        });
+        clerkInvitationId = invitation.id;
+      } catch (clerkErr: unknown) {
+        console.error('Clerk invitation failed:', clerkErr);
+        return res.status(500).json({ error: 'Failed to send invitation email' });
       }
     }
 
@@ -158,7 +194,7 @@ router.post('/invite', requireAuth(), async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /api/team/:memberId — remove a team member and revoke pending Clerk invitation
+// DELETE /api/team/:memberId — owner-only. Removes a team member and revokes their pending Clerk invitation.
 router.delete('/:memberId', requireAuth(), async (req: Request, res: Response) => {
   try {
     const { userId } = getAuth(req);
@@ -169,6 +205,14 @@ router.delete('/:memberId', requireAuth(), async (req: Request, res: Response) =
     const ds = await getDb();
     const repo = ds.getRepository(TeamMember);
 
+    // Role enforcement: only org owners can remove members
+    const callerAsMember = await repo.findOneBy({ memberId: userId, status: 'active' });
+    if (callerAsMember) {
+      return res.status(403).json({
+        error: 'Only organization owners can remove members.',
+      });
+    }
+
     const member = await repo.findOneBy({ id: memberId, ownerId: userId });
     if (!member) {
       return res.status(404).json({ error: 'Team member not found' });
@@ -178,7 +222,6 @@ router.delete('/:memberId', requireAuth(), async (req: Request, res: Response) =
       try {
         await clerkClient.invitations.revokeInvitation(member.clerkInvitationId);
       } catch (revokeErr) {
-        // Ignore — invitation may already be revoked or expired
         console.warn('Failed to revoke Clerk invitation (may already be revoked):', revokeErr);
       }
     }

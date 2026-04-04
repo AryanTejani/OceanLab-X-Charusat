@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth, getAuth } from '@clerk/express';
+import { requireAuth, getAuth, clerkClient } from '@clerk/express';
 import { getDb } from '../lib/db';
 import { Meeting } from '../entities/Meeting';
 import { Transcript } from '../entities/Transcript';
+import { MeetingInvitation } from '../entities/MeetingInvitation';
 
 const router = Router();
 
@@ -133,7 +134,38 @@ router.patch('/:meetingId/participants', requireAuth(), async (req: Request, res
       return res.status(403).json({ error: 'Forbidden' });
     }
 
+    const previous = meeting.participantUserIds || [];
     await repo.update({ meetingId }, { participantUserIds });
+
+    // Create invitation records for newly added participants (for polling notifications)
+    const newlyAdded = participantUserIds.filter((id: string) => !previous.includes(id) && id !== userId);
+    if (newlyAdded.length > 0) {
+      const invRepo = ds.getRepository(MeetingInvitation);
+      const inviterName = await (async () => {
+        try {
+          const u = await clerkClient.users.getUser(userId);
+          return `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Someone';
+        } catch { return 'Someone'; }
+      })();
+      await Promise.allSettled(
+        newlyAdded.map((inviteeId: string) =>
+          invRepo
+            .createQueryBuilder()
+            .insert()
+            .into(MeetingInvitation)
+            .values({
+              meetingId,
+              inviterId: userId,
+              inviteeId,
+              meetingTitle: meeting.title || 'Meeting',
+              status: 'pending',
+            })
+            .orIgnore() // unique constraint: meetingId + inviteeId
+            .execute()
+        )
+      );
+      void inviterName; // used above in closure
+    }
 
     res.json({ success: true, participantUserIds });
   } catch (error) {

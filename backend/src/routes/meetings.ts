@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth, getAuth } from '@clerk/express';
 import { getDb } from '../lib/db';
 import { Meeting } from '../entities/Meeting';
+import { Transcript } from '../entities/Transcript';
 
 const router = Router();
 
@@ -25,7 +26,7 @@ router.get('/', requireAuth(), async (req: Request, res: Response) => {
         'meeting.keyTopics',
       ])
       .where('meeting.userId = :userId', { userId })
-      .orWhere(':userId = ANY(meeting."participantUserIds"::text[])', { userId })
+      .orWhere('meeting."participantUserIds" @> :userIdJson::jsonb', { userIdJson: JSON.stringify([userId]) })
       .orderBy('meeting.createdAt', 'DESC')
       .getMany();
 
@@ -65,6 +66,25 @@ router.post('/save', requireAuth(), async (req: Request, res: Response) => {
       { conflictPaths: ['meetingId'] }
     );
 
+    // Populate participantUserIds from transcripts immediately so participants
+    // can see the meeting in their list while it is still processing
+    try {
+      const transcriptRepo = ds.getRepository(Transcript);
+      const rows = await transcriptRepo
+        .createQueryBuilder('t')
+        .select('DISTINCT t."speakerId"', 'speakerId')
+        .where('t."meetingId" = :meetingId', { meetingId })
+        .andWhere('t."speakerId" IS NOT NULL')
+        .getRawMany<{ speakerId: string }>();
+
+      const participantUserIds = rows.map((r) => r.speakerId);
+      if (participantUserIds.length > 0) {
+        await repo.update({ meetingId, userId }, { participantUserIds });
+      }
+    } catch (err) {
+      console.error('Failed to populate participantUserIds on save:', err);
+    }
+
     const meeting = await repo.findOneByOrFail({ meetingId, userId });
 
     res.json({ success: true, meetingId: meeting.meetingId, status: meeting.status });
@@ -82,9 +102,16 @@ router.get('/:id', requireAuth(), async (req: Request, res: Response) => {
 
     const { id } = req.params;
     const ds = await getDb();
-    const repo = ds.getRepository(Meeting);
 
-    const meeting = await repo.findOneBy({ meetingId: id, userId });
+    const meeting = await ds
+      .getRepository(Meeting)
+      .createQueryBuilder('meeting')
+      .where('meeting.meetingId = :id', { id })
+      .andWhere(
+        '(meeting.userId = :userId OR meeting."participantUserIds" @> :userIdJson::jsonb)',
+        { userId, userIdJson: JSON.stringify([userId]) }
+      )
+      .getOne();
 
     if (!meeting) {
       return res.status(404).json({ error: 'Meeting not found' });

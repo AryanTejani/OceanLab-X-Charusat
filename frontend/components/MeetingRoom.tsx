@@ -12,7 +12,8 @@ import {
 } from '@stream-io/video-react-sdk';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
-import { Users, LayoutList, FileText } from 'lucide-react';
+import { Users, LayoutList, FileText, Copy } from 'lucide-react';
+import { useToast } from './ui/use-toast';
 import { apiFetch } from '@/lib/api';
 
 import {
@@ -35,6 +36,7 @@ const MeetingRoom = () => {
   const router = useRouter();
   const call = useCall();
   const { getToken } = useAuth();
+  const { toast } = useToast();
   const [layout, setLayout] = useState<CallLayoutType>('speaker-left');
   const [showParticipants, setShowParticipants] = useState(false);
   const [showTranscription, setShowTranscription] = useState(false);
@@ -148,6 +150,18 @@ const MeetingRoom = () => {
         <button onClick={() => setShowTranscription((prev) => !prev)}>
           <div className=" cursor-pointer rounded-2xl bg-[#19232d] px-4 py-2 hover:bg-[#4c535b]  ">
             <FileText size={20} className="text-white" />
+          </div>
+        </button>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(
+              `${process.env.NEXT_PUBLIC_BASE_URL}/meeting/${call?.id}`
+            );
+            toast({ title: 'Invitation link copied' });
+          }}
+        >
+          <div className="cursor-pointer rounded-2xl bg-[#19232d] px-4 py-2 hover:bg-[#4c535b]">
+            <Copy size={20} className="text-white" />
           </div>
         </button>
         {!isPersonalRoom && <EndCallButton onBeforeLeave={saveMeeting} />}

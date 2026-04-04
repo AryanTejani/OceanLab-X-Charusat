@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { Call, useStreamVideoClient } from '@stream-io/video-react-sdk';
 
@@ -7,11 +7,14 @@ export const useGetCalls = () => {
   const client = useStreamVideoClient();
   const [calls, setCalls] = useState<Call[]>();
   const [isLoading, setIsLoading] = useState(false);
+  const [refetchKey, setRefetchKey] = useState(0);
+
+  const refetch = useCallback(() => setRefetchKey((k) => k + 1), []);
 
   useEffect(() => {
     const loadCalls = async () => {
       if (!client || !user?.id) return;
-      
+
       setIsLoading(true);
 
       try {
@@ -36,7 +39,7 @@ export const useGetCalls = () => {
     };
 
     loadCalls();
-  }, [client, user?.id]);
+  }, [client, user?.id, refetchKey]);
 
   const now = new Date();
 
@@ -48,5 +51,5 @@ export const useGetCalls = () => {
     return startsAt && new Date(startsAt) > now
   })
 
-  return { endedCalls, upcomingCalls, callRecordings: calls, isLoading }
+  return { endedCalls, upcomingCalls, callRecordings: calls, isLoading, refetch }
 };

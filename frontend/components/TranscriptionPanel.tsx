@@ -1,53 +1,70 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Mic, MicOff, Trash2, FileText, Download } from 'lucide-react';
-import { useDeepgramTranscription } from '@/hooks/useDeepgramTranscription';
-import { useParams } from 'next/navigation';
-import localTranscriptStorageClient from '@/lib/localTranscriptStorageClient';
+import React, { useEffect, useRef } from 'react';
+import { Mic, MicOff, Pause, Play, Square, FileText } from 'lucide-react';
+import { useHostTranscription } from '@/hooks/useHostTranscription';
+import {
+  useTranscriptionReceiver,
+  isSeparator,
+  TranscriptEntry,
+  TranscriptSeparator,
+} from '@/hooks/useTranscriptionReceiver';
 import QnAChatbot from './QnAChatbot';
 
 interface TranscriptionPanelProps {
   isOpen: boolean;
   onToggle: () => void;
+  isHost: boolean;
+  meetingId: string;
 }
 
-const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
-  const { id } = useParams();
-  const meetingId = Array.isArray(id) ? id[0] : id;
-  const { transcripts, isTranscribing, startTranscription, stopTranscription, clearTranscripts, error, savedTranscriptPath, setSavedTranscriptPath } = useDeepgramTranscription(meetingId || '');
-  const [autoScroll, setAutoScroll] = useState(true);
+const formatTime = (timestamp: Date) =>
+  new Date(timestamp).toLocaleTimeString();
 
-  const formatTime = (timestamp: Date) => {
-    return new Date(timestamp).toLocaleTimeString();
-  };
+const TranscriptionPanel = ({
+  isOpen,
+  onToggle,
+  isHost,
+  meetingId,
+}: TranscriptionPanelProps) => {
+  const receiver = useTranscriptionReceiver(meetingId);
+  const host = useHostTranscription(meetingId);
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10;
-    setAutoScroll(isAtBottom);
-  };
+  const containerRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef(true);
 
-  const scrollToBottom = () => {
-    const transcriptContainer = document.getElementById('transcript-container');
-    if (transcriptContainer) {
-      transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+  // Auto-scroll when new items arrive
+  useEffect(() => {
+    if (autoScrollRef.current && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  };
+  }, [receiver.items]);
 
-  // Auto-scroll to bottom when new transcripts arrive
-  if (autoScroll && transcripts.length > 0) {
-    setTimeout(scrollToBottom, 100);
-  }
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    autoScrollRef.current = scrollTop + clientHeight >= scrollHeight - 10;
+  };
 
   if (!isOpen) return null;
 
+  const { transcriptionState } = receiver;
+  const isPaused = transcriptionState.state === 'paused';
+  const isActive = transcriptionState.state === 'active';
+
   return (
-    <div className="fixed right-4 top-20 w-80 bg-dark-1 rounded-lg shadow-lg border border-dark-2 z-50">
-      <div className="flex items-center justify-between p-4 border-b border-dark-2">
+    <div className="fixed right-4 top-20 w-80 bg-dark-1 rounded-lg shadow-lg border border-dark-2 z-50 flex flex-col max-h-[calc(100vh-120px)]">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-dark-2 flex-shrink-0">
         <div className="flex items-center gap-2">
           <FileText size={20} className="text-white" />
           <h3 className="text-white font-semibold">Live Transcript</h3>
+          {isActive && (
+            <span className="flex items-center gap-1 text-xs text-green-400">
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              Live
+            </span>
+          )}
         </div>
         <button
           onClick={onToggle}
@@ -57,139 +74,156 @@ const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
         </button>
       </div>
 
-      <div className="p-4">
-        {/* Transcription Controls */}
-        <div className="flex items-center gap-2 mb-4">
-          {!isTranscribing ? (
+      {/* Host controls */}
+      {isHost && (
+        <div className="flex items-center gap-2 p-3 border-b border-dark-2 flex-shrink-0">
+          {host.status === 'idle' && (
             <button
-              onClick={startTranscription}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg transition-colors"
+              onClick={host.start}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
             >
-              <Mic size={16} />
+              <Mic size={14} />
               Start
             </button>
-          ) : (
-            <button
-              onClick={stopTranscription}
-              className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg transition-colors"
-            >
-              <MicOff size={16} />
-              Stop
-            </button>
           )}
-          
-          <button
-            onClick={clearTranscripts}
-            className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg transition-colors"
-            disabled={transcripts.length === 0}
-          >
-            <Trash2 size={16} />
-            Clear
-          </button>
-          
-          <button
-            onClick={() => {
-              const filename = localTranscriptStorageClient.saveTranscript();
-              if (filename) {
-                setSavedTranscriptPath(filename);
-              }
-            }}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg transition-colors"
-            disabled={transcripts.length === 0}
-          >
-            <Download size={16} />
-            Save
-          </button>
-        </div>
-
-        {/* Status */}
-        <div className="mb-4">
-          {isTranscribing && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-green-400">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                Recording... Capturing all participants&apos; audio.
-                <span className="text-xs text-gray-400 ml-2">(Deepgram - Speaker Diarization)</span>
-              </div>
-              <div className="text-xs text-blue-300 bg-blue-900/20 p-2 rounded border border-blue-600">
-                ✅ <strong>Multi-speaker support:</strong> Captures audio from all participants (local mic + remote audio) and automatically identifies who is speaking.
-              </div>
-            </div>
-          )}
-          {error && (
-            <div className="text-red-400 text-sm bg-red-900/20 p-2 rounded border border-red-600">
-              ⚠️ {error}
-              {error.includes('microphone') && (
-                <div className="mt-1 text-xs text-red-300">
-                  Please allow microphone access and try again.
-                </div>
-              )}
-            </div>
-          )}
-          {savedTranscriptPath && (
-            <div className="text-green-400 text-sm bg-green-900/20 p-2 rounded border border-green-600">
-              ✅ Transcript saved to: {savedTranscriptPath.split('/').pop()}
-            </div>
-          )}
-          {!isTranscribing && !error && transcripts.length === 0 && (
-            <div className="text-gray-400 text-sm">
-              💡 Click Start to begin live transcription
-            </div>
-          )}
-          {transcripts.length > 0 && (
-            <div className="text-blue-400 text-sm">
-              📝 {transcripts.length} transcript entries captured
-              <br />
-              <span className="text-xs text-gray-400">
-                (Filtered from {localTranscriptStorageClient.getTranscriptCount()} total entries)
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Transcripts */}
-        <div
-          id="transcript-container"
-          className="max-h-96 overflow-y-auto space-y-2"
-          onScroll={handleScroll}
-        >
-          {transcripts.length === 0 ? (
-            <div className="text-gray-400 text-center py-8">
-              No transcripts yet. Start recording to see live transcription.
-            </div>
-          ) : (
-            transcripts.map((transcript, index) => (
-              <div
-                key={index}
-                className={`p-3 rounded-lg ${
-                  transcript.isFinal ? 'bg-dark-2' : 'bg-dark-3'
-                }`}
+          {host.status === 'active' && (
+            <>
+              <button
+                onClick={host.pause}
+                className="flex items-center gap-1.5 bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
               >
-                <div className="flex items-start justify-between mb-1">
-                  <span className="text-blue-400 font-medium text-sm">
-                    {transcript.speakerName || 'Speaker'}
+                <Pause size={14} />
+                Pause
+              </button>
+              <button
+                onClick={host.stop}
+                className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
+              >
+                <Square size={14} />
+                Stop
+              </button>
+            </>
+          )}
+          {host.status === 'paused' && (
+            <>
+              <button
+                onClick={host.resume}
+                className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
+              >
+                <Play size={14} />
+                Resume
+              </button>
+              <button
+                onClick={host.stop}
+                className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
+              >
+                <Square size={14} />
+                Stop
+              </button>
+            </>
+          )}
+          {host.error && (
+            <p className="text-red-400 text-xs ml-1 truncate">{host.error}</p>
+          )}
+        </div>
+      )}
+
+      {/* Paused banner — visible to all participants */}
+      {isPaused && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-yellow-900/30 border-b border-yellow-600/30 flex-shrink-0">
+          <Pause size={14} className="text-yellow-400 flex-shrink-0" />
+          <p className="text-yellow-300 text-xs">
+            Transcription paused at {formatTime(transcriptionState.timestamp)}
+            {!isHost && ' — confidential discussion'}
+          </p>
+        </div>
+      )}
+
+      {/* Status hint for non-host participants */}
+      {!isHost &&
+        transcriptionState.state === 'stopped' &&
+        receiver.items.length === 0 && (
+          <div className="px-3 py-2 text-gray-400 text-xs border-b border-dark-2 flex-shrink-0">
+            Waiting for host to start transcription...
+          </div>
+        )}
+
+      {/* Transcript list */}
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0"
+        onScroll={handleScroll}
+      >
+        {receiver.items.length === 0 ? (
+          <p className="text-gray-400 text-center text-sm py-8">
+            {isHost
+              ? 'Click Start to begin transcription.'
+              : 'No transcripts yet.'}
+          </p>
+        ) : (
+          receiver.items.map((item, idx) => {
+            if (isSeparator(item)) {
+              const sep = item as TranscriptSeparator;
+              return (
+                <div
+                  key={`sep-${idx}`}
+                  className="flex items-center gap-2 py-1"
+                >
+                  <div className="flex-1 h-px bg-dark-3" />
+                  <span className="text-xs text-gray-500 whitespace-nowrap flex items-center gap-1">
+                    {sep.type === 'paused' ? (
+                      <>
+                        <Pause size={10} className="text-yellow-500" /> Paused{' '}
+                        {formatTime(sep.timestamp)}
+                      </>
+                    ) : (
+                      <>
+                        <Play size={10} className="text-green-500" /> Resumed{' '}
+                        {formatTime(sep.timestamp)}
+                      </>
+                    )}
                   </span>
-                  <span className="text-gray-400 text-xs">
-                    {formatTime(transcript.timestamp || new Date())}
+                  <div className="flex-1 h-px bg-dark-3" />
+                </div>
+              );
+            }
+
+            const entry = item as TranscriptEntry;
+            const displayName = receiver.getDisplayName(entry);
+
+            return (
+              <div
+                key={`entry-${idx}`}
+                className={`p-2.5 rounded-lg ${entry.isFinal ? 'bg-dark-2' : 'bg-dark-3 opacity-70'}`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-blue-400 font-medium text-xs">
+                    {entry.isFinal
+                      ? displayName
+                      : entry.speakerLabel
+                        ? `Speaker ${entry.speakerLabel}`
+                        : '...'}
+                  </span>
+                  <span className="text-gray-500 text-xs">
+                    {formatTime(entry.timestamp)}
                   </span>
                 </div>
-                <p className="text-white text-sm">
-                  {transcript.text}
-                  {!transcript.isFinal && (
-                    <span className="text-gray-400">...</span>
-                  )}
+                <p
+                  className={`text-sm leading-relaxed ${entry.isFinal ? 'text-white' : 'text-gray-400 italic'}`}
+                >
+                  {entry.text}
+                  {!entry.isFinal && <span className="animate-pulse">...</span>}
                 </p>
               </div>
-            ))
-          )}
-        </div>
+            );
+          })
+        )}
       </div>
-      
+
       {/* QnA Chatbot */}
-      <QnAChatbot meetingId={meetingId || ''} />
+      <QnAChatbot meetingId={meetingId} />
     </div>
   );
 };
 
 export default TranscriptionPanel;
-

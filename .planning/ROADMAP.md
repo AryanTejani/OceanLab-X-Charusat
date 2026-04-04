@@ -282,7 +282,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 Plans:
 - [ ] 06-01-PLAN.md -- Install RAG packages, Supabase admin client, embeddings module, pgvector migration
-- [ ] 06-02-PLAN.md -- LangGraph RAG graph, SSE route upgrade, flushBuffer indexing hook
+- [x] 06-02-PLAN.md -- LangGraph RAG graph, SSE route upgrade, flushBuffer indexing hook
 - [ ] 06-03-PLAN.md -- Frontend SSE streaming consumer with pulsing cursor
 
 ## Progress
@@ -297,4 +297,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Dashboard and Podcast | 0/TBD | Not started | - |
 | 4. Polish and Demo Prep | 0/TBD | Not started | - |
 | 5. Live Transcription | 0/TBD | In progress (teammate) | - |
-| 6. Live Q&A RAG | 0/3 | Planned | - |
+| 6. Live Q&A RAG | 1/3 | In Progress|  |

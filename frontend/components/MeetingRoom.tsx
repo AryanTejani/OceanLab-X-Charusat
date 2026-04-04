@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   CallControls,
   CallParticipantsList,
@@ -12,7 +12,7 @@ import {
 } from '@stream-io/video-react-sdk';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
-import { Users, LayoutList, FileText, Copy } from 'lucide-react';
+import { Users, LayoutList, FileText, Copy, UserPlus } from 'lucide-react';
 import { useToast } from './ui/use-toast';
 import { apiFetch } from '@/lib/api';
 
@@ -26,6 +26,7 @@ import {
 import Loader from './Loader';
 import EndCallButton from './EndCallButton';
 import TranscriptionPanel from './TranscriptionPanel';
+import TeamMemberPanel from './TeamMemberPanel';
 import { cn } from '@/lib/utils';
 
 type CallLayoutType = 'grid' | 'speaker-left' | 'speaker-right';
@@ -40,7 +41,9 @@ const MeetingRoom = () => {
   const [layout, setLayout] = useState<CallLayoutType>('speaker-left');
   const [showParticipants, setShowParticipants] = useState(false);
   const [showTranscription, setShowTranscription] = useState(false);
+  const [showTeamPanel, setShowTeamPanel] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [participantUserIds, setParticipantUserIds] = useState<string[]>([]);
   const { useCallCallingState, useLocalParticipant } = useCallStateHooks();
   const localParticipant = useLocalParticipant();
   const isHost = !!(
@@ -50,6 +53,16 @@ const MeetingRoom = () => {
   );
 
   const callingState = useCallCallingState();
+
+  useEffect(() => {
+    if (call?.state?.custom?.participantUserIds) {
+      setParticipantUserIds(call.state.custom.participantUserIds);
+    }
+  }, [call?.state?.custom?.participantUserIds]);
+
+  const handleParticipantAdded = (userId: string) => {
+    setParticipantUserIds((prev) => [...prev, userId]);
+  };
 
   const saveMeeting = useCallback(async () => {
     const callId = call?.id;
@@ -69,6 +82,7 @@ const MeetingRoom = () => {
             `Meeting ${new Date().toLocaleDateString()}`,
           participants:
             call?.state?.members?.map((m) => m.user?.name || m.user_id) || [],
+          participantUserIds,
         }),
       });
       if (res.ok) {
@@ -82,7 +96,7 @@ const MeetingRoom = () => {
       setIsSaving(false);
     }
     router.push('/');
-  }, [call, router, getToken]);
+  }, [call, router, getToken, participantUserIds]);
 
   const handleLeave = saveMeeting;
 
@@ -164,6 +178,11 @@ const MeetingRoom = () => {
             <Copy size={20} className="text-white" />
           </div>
         </button>
+        <button onClick={() => setShowTeamPanel((prev) => !prev)}>
+          <div className="cursor-pointer rounded-2xl bg-[#19232d] px-4 py-2 hover:bg-[#4c535b]">
+            <UserPlus size={20} className="text-white" />
+          </div>
+        </button>
         {!isPersonalRoom && <EndCallButton onBeforeLeave={saveMeeting} />}
       </div>
 
@@ -173,6 +192,15 @@ const MeetingRoom = () => {
         onToggle={() => setShowTranscription(!showTranscription)}
         isHost={isHost}
         meetingId={call?.id || ''}
+      />
+
+      {/* Team Member Panel */}
+      <TeamMemberPanel
+        isOpen={showTeamPanel}
+        onClose={() => setShowTeamPanel(false)}
+        meetingId={call?.id || ''}
+        currentParticipantIds={participantUserIds}
+        onParticipantAdded={handleParticipantAdded}
       />
     </section>
   );
